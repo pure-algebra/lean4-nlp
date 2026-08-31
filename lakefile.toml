@@ -1,0 +1,14 @@
+name = "nlp-core"
+version = "0.1.0"
+defaultTargets = ["NlpCore"]
+precompileModules = false
+
+[[lean_lib]]
+name = "NlpCore"
+srcDir = "."
+roots = ["Nlp"]
+
+[[lean_lib]]
+name = "NlpTests"
+srcDir = "."
+roots = ["NlpTests"]
