@@ -217,6 +217,22 @@ private structure ExpandedRules (K : Type) where
 
 namespace TreebankGrammar
 
+/--
+A source-locked, validated acyclic unary-elimination plan awaiting expansion.
+
+Preparation checks structure and lower bounds, builds the source index, and rejects cycles. Its
+private constructor prevents callers from pairing an index with another source. The exact source
+remains public so additional weight validators can run before `AcyclicUnaryPlan.execute` allocates
+paths and output rules.
+-/
+structure AcyclicUnaryPlan (K : Type) where
+  private mk ::
+  /-- The exact structurally validated source retained by this plan. -/
+  source : TreebankGrammar K
+  private config : UnaryElimConfig
+  private validated : ValidatedSource K
+  private topology : Topology
+
 @[inline] private def fitsNT (nNT : Nat) (value : NT) : Bool :=
   value.toNat < nNT
 
@@ -368,6 +384,23 @@ private def deterministicCycle (validated : ValidatedSource K)
           result := some (#[current], #[])
   return result.getD (#[start], #[])
 
+/--
+Validate, preflight, index, and globally reject cycles without expanding unary paths.
+
+The check covers every declared nonterminal, including nodes unreachable from the start. The
+returned plan retains the exact source so weight validation can occur before expansion.
+-/
+def prepareAcyclicUnaryWith (config : UnaryElimConfig)
+    (grammar : TreebankGrammar K) : Except UnaryElimError (AcyclicUnaryPlan K) := do
+  validateSource grammar
+  preflightLowerBounds config grammar
+  let validated := indexSource grammar
+  let topology := kahnOrder validated
+  unless topology.processed == grammar.nNT do
+    let witness := deterministicCycle validated topology.residualIndegree
+    throw (.cycle witness.1 witness.2)
+  return .mk grammar config validated topology
+
 @[inline] private def checkedAdd (current additional limit : Nat) : Option Nat :=
   if current ≤ limit && additional ≤ limit - current then
     some (current + additional)
@@ -508,6 +541,18 @@ private def assembleResult [Mul K] (source : TreebankGrammar K)
     expanded.lexicalProvenance
 
 /--
+Expand every positional path and emit aligned rules and provenance from a prepared plan.
+
+Repeated execution is deterministic. Identity weights are copied exactly; nonidentity weights
+retain the documented left-associated source order.
+-/
+def AcyclicUnaryPlan.execute [One K] [Mul K] (plan : AcyclicUnaryPlan K) :
+    Except UnaryElimError (UnaryFreeGrammar K) := do
+  let built ← buildPaths plan.config plan.validated plan.topology
+  let counts ← countOutputs plan.config plan.validated built.paths
+  return assembleResult plan.source plan.validated built counts
+
+/--
 Validate and eliminate every positional unary path under explicit expansion limits.
 
 Validation, lower-bound preflight, and deterministic cycle rejection finish before path expansion.
@@ -517,16 +562,8 @@ base-source-major, and duplicates are never aggregated.
 -/
 def eliminateAcyclicUnaryWith [One K] [Mul K] (config : UnaryElimConfig)
     (grammar : TreebankGrammar K) : Except UnaryElimError (UnaryFreeGrammar K) := do
-  validateSource grammar
-  preflightLowerBounds config grammar
-  let validated := indexSource grammar
-  let topology := kahnOrder validated
-  unless topology.processed == grammar.nNT do
-    let witness := deterministicCycle validated topology.residualIndegree
-    throw (.cycle witness.1 witness.2)
-  let built ← buildPaths config validated topology
-  let counts ← countOutputs config validated built.paths
-  return assembleResult grammar validated built counts
+  let plan ← prepareAcyclicUnaryWith config grammar
+  plan.execute
 
 private theorem eliminateAcyclicUnaryWith_projections [One K] [Mul K]
     (config : UnaryElimConfig) (grammar : TreebankGrammar K)
@@ -534,7 +571,7 @@ private theorem eliminateAcyclicUnaryWith_projections [One K] [Mul K]
     (success : eliminateAcyclicUnaryWith config grammar = .ok result) :
     result.source = grammar ∧ result.grammar.start = grammar.start ∧
       result.grammar.nNT = grammar.nNT := by
-  unfold eliminateAcyclicUnaryWith at success
+  unfold eliminateAcyclicUnaryWith prepareAcyclicUnaryWith AcyclicUnaryPlan.execute at success
   cases validation : validateSource grammar with
   | error error =>
     simp [Bind.bind, Except.bind, validation] at success
@@ -550,13 +587,14 @@ private theorem eliminateAcyclicUnaryWith_projections [One K] [Mul K]
       by_cases acyclic : topology.processed = grammar.nNT
       · cases paths : buildPaths config validated topology with
         | error error =>
-          simp [Bind.bind, Except.bind, validation, preflight,
-            validated, topology, acyclic, paths] at success
+          simp [Bind.bind, Pure.pure, Except.bind, Except.pure,
+            validation, preflight, validated, topology, acyclic, paths] at success
         | ok built =>
           cases counts : countOutputs config validated built.paths with
           | error error =>
-            simp [Bind.bind, Except.bind, validation, preflight,
-              validated, topology, acyclic, paths, counts] at success
+            simp [Bind.bind, Pure.pure, Except.bind, Except.pure,
+              validation, preflight, validated, topology, acyclic, paths, counts]
+              at success
           | ok outputCounts =>
             have equality : assembleResult grammar validated built outputCounts = result := by
               simpa [Bind.bind, Pure.pure, Except.instMonad, Except.bind, Except.pure,

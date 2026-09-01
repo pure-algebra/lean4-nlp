@@ -5,8 +5,8 @@ import Std.Data.HashMap
 # Validated compiled CNF grammars
 
 `CompiledCNF` is the reusable parser-side representation of a `CNF`. Its constructor is hidden:
-the only public construction path validates every nonterminal identifier and every capacity before
-building the indexes.
+every public construction path is gated by a private-constructor certificate produced only after
+validating every nonterminal identifier and capacity.
 
 Lexical productions are stored in stable, contiguous token buckets. Binary productions use a
 dense pair-offset table while it is small, then switch to a hash-indexed sparse table. The default
@@ -121,6 +121,18 @@ structure CompiledCNF (K : Type) where
   lexicalKeys : Array Tok
   lexicalStarts : Array Nat
 
+/--
+A structurally validated CNF source awaiting index allocation.
+
+The private constructor ensures that `grammar` has passed the complete identifier and capacity
+scan. Callers may run additional validators over the exact retained grammar before choosing to
+allocate compiled indexes.
+-/
+structure CheckedCNF (K : Type) where
+  private mk ::
+  /-- The exact source that passed structural validation. -/
+  grammar : CNF K
+
 namespace CompiledCNF
 
 /-- Validate capacities shared by the compiler and effectful model-loading front ends. -/
@@ -134,8 +146,13 @@ def validateCapacities (nNT binaryRules lexicalRules : Nat) : Except CompileErro
   else
     .ok ()
 
-/-- Validate all IDs before allocating either index. Errors identify the first source rule. -/
-def validate [Inhabited K] (grammar : CNF K) : Except CompileError Unit := do
+/--
+Validate all IDs once and retain the exact source without allocating either index.
+
+Errors identify the first malformed source rule. The returned certificate can be inspected by
+additional validators before `compileCheckedWith` allocates the adaptive indexes.
+-/
+def checkSource [Inhabited K] (grammar : CNF K) : Except CompileError (CheckedCNF K) := do
   validateCapacities grammar.nNT grammar.bin.size grammar.lex.size
   unless grammar.start.toNat < grammar.nNT do
     throw (.invalidStart grammar.start grammar.nNT)
@@ -148,6 +165,12 @@ def validate [Inhabited K] (grammar : CNF K) : Except CompileError Unit := do
     let rule := grammar.lex[source]!
     unless rule.lhs.toNat < grammar.nNT do
       throw (.invalidLexicalRule source rule.lhs grammar.nNT)
+  return .mk grammar
+
+/-- Validate all IDs before allocating either index. Errors identify the first source rule. -/
+def validate [Inhabited K] (grammar : CNF K) : Except CompileError Unit := do
+  let _ ← checkSource grammar
+  return ()
 
 private structure BinaryBuild (K : Type) where
   rules : Array (BinRule K)
@@ -249,17 +272,27 @@ private def buildLexical [Inhabited K] (grammar : CNF K) : LexicalBuild K := Id.
     fill := fill.set! bucket (target + 1)
   return ⟨rules, sources, ordinals, keys, starts⟩
 
-/-- Compile with an explicit dense-pair budget. Validation always precedes allocation. -/
-def compileWith [Inhabited K] (config : CompileConfig) (grammar : CNF K) :
-    Except CompileError (CompiledCNF K) := do
-  validate grammar
+/-- Allocate adaptive indexes for an already structurally validated source without rescanning. -/
+def compileCheckedWith [Inhabited K] (config : CompileConfig)
+    (checked : CheckedCNF K) : CompiledCNF K :=
+  let grammar := checked.grammar
   let binary :=
     match config.layoutFor grammar.nNT with
     | .dense => buildBinaryDense grammar
     | .sparse => buildBinarySparse grammar
   let lexical := buildLexical grammar
-  return .mk grammar binary.rules binary.sources binary.index lexical.rules lexical.sources
+  .mk grammar binary.rules binary.sources binary.index lexical.rules lexical.sources
     lexical.ordinals lexical.keys lexical.starts
+
+/-- Allocate production-threshold indexes for an already validated source without rescanning. -/
+@[inline] def compileChecked [Inhabited K] (checked : CheckedCNF K) : CompiledCNF K :=
+  compileCheckedWith CompileConfig.default checked
+
+/-- Compile with an explicit dense-pair budget. Validation always precedes allocation. -/
+def compileWith [Inhabited K] (config : CompileConfig) (grammar : CNF K) :
+    Except CompileError (CompiledCNF K) := do
+  let checked ← checkSource grammar
+  return compileCheckedWith config checked
 
 /-- Compile a CNF grammar using the production adaptive-index threshold. -/
 @[inline] def compile [Inhabited K] (grammar : CNF K) :

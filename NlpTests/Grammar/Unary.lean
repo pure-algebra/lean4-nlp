@@ -144,6 +144,23 @@ private def chainHasEveryPath : Bool :=
 example : chainHasEveryPath = true := by
   native_decide
 
+private structure NoOpsWeight where
+  value : Nat
+deriving Repr, DecidableEq, Inhabited
+
+private def preparationNeedsNoWeightAlgebra : Bool :=
+  match Grammar.induce interner #[chainTree] with
+  | .error _ => false
+  | .ok counted =>
+    let grammar := counted.mapWeights fun count ↦ NoOpsWeight.mk count.toNat
+    match grammar.prepareAcyclicUnaryWith .default with
+    | .error _ => false
+    | .ok plan => plan.source.nNT == grammar.nNT && plan.source.unary.size == 2
+
+/-- Structural preparation completes before requiring identity or multiplication operations. -/
+example : preparationNeedsNoWeightAlgebra = true := by
+  native_decide
+
 private def diamondTrees : Array Tree :=
   #[unary 0 (unary 1 (terminal 3 7)), unary 0 (unary 2 (terminal 3 7))]
 

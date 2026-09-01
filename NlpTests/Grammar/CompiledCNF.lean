@@ -74,9 +74,22 @@ private def dense := CompiledCNF.compileWith denseConfig grammar
 
 private def sparse := CompiledCNF.compileWith sparseConfig grammar
 
+private def checkedSparse : Option (CompiledCNF Nat) :=
+  match CompiledCNF.checkSource grammar with
+  | .ok checked => some (CompiledCNF.compileCheckedWith sparseConfig checked)
+  | .error _ => none
+
 example : layout? dense = some .dense := by native_decide
 
 example : layout? sparse = some .sparse := by native_decide
+
+example : checkedSparse.map CompiledCNF.pairLayout = some .sparse := by native_decide
+
+example :
+    checkedSparse.bind (fun compiled ↦
+      (compiled.binaryRange? 1 2).map fun range ↦
+        compiled.binarySources.extract range.first range.stop) = some #[0, 2, 4] := by
+  native_decide
 
 example : denseConfig.layoutFor 4 = .dense := by
   exact CompileConfig.layoutFor_eq_dense denseConfig 4 (by decide)
