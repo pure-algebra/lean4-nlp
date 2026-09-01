@@ -56,6 +56,21 @@ private def expectedSpans : Array (String × Nat × Nat) :=
   #[(("S", 0, 2)), (("NP", 0, 1)), (("N", 0, 1)),
     (("VP", 1, 2)), (("V", 1, 2))]
 
+/-- The public range theorem exposes exact normalized source-form preservation to callers. -/
+example (model : ConstituencyModel) (forms : Array String) (words : Array Word)
+    (start stop : Nat) (tree : Tree) {named : NamedTree}
+    (resolved : model.resolveTreeRange forms words start stop tree = .ok named) :
+    named.yieldForms =
+      forms.extract (min start (min stop forms.size)) (min stop forms.size) :=
+  model.resolveTreeRange_yieldForms forms words start stop tree resolved
+
+/-- The full-column theorem specializes exact range preservation to the complete form column. -/
+example (model : ConstituencyModel) (forms : Array String) (words : Array Word)
+    (tree : Tree) {named : NamedTree}
+    (resolved : model.resolveTree forms words tree = .ok named) :
+    named.yieldForms = forms :=
+  model.resolveTree_yieldForms forms words tree resolved
+
 def testPureNamedAndOov : IO Unit := do
   let model ← requireModel
   if model.encode "dogs" != 5 || model.encode "NP" != 7 || model.encode "cats" != 7 then
