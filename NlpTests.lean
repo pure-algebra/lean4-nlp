@@ -1,4 +1,5 @@
 import NlpTests.Core
+import NlpTests.Pattern
 import NlpTests.Pipeline
 import NlpTests.Syntax
 import NlpTests.Grammar

@@ -63,6 +63,8 @@ abbrev NLP := ReaderT Env (EIO Fail)
 inductive SkipReason where
   | tooLong (tokens limit : Nat)
   | chartTooLarge (entries limit : Nat)
+  | workLimit (required limit : Nat)
+  | candidateLimit (required limit : Nat)
   | outOfVocabulary
   | disabled
   | timedOut

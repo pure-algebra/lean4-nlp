@@ -1,4 +1,5 @@
 import Nlp.Core
+import Nlp.Pattern
 import Nlp.Pipeline
 import Nlp.Syntax
 import Nlp.Grammar

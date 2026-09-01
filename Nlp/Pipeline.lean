@@ -16,6 +16,7 @@ import Nlp.Pipeline.Unary
 import Nlp.Pipeline.Constituency
 import Nlp.Pipeline.Dependency
 import Nlp.Pipeline.Ner
+import Nlp.Pipeline.RegexNer
 import Nlp.Pipeline.Evalb
 
 /-!
