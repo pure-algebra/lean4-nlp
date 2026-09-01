@@ -21,4 +21,10 @@ private def tokenized : Doc [.sents, .tokens] :=
 example : tokenized.forms = #["Hi", ".", "Bye", "!"] := by native_decide
 example : tokenized.sentEnd = #[2, 4] := by native_decide
 
+private def lemmatized : Except Morphology.CompileError String :=
+  (Morphology.Model.compile #[⟨.noun, "dog"⟩] #[]).map fun model ↦
+    model.lemmaOrSelf .noun "dogs"
+
+example : lemmatized.toOption = some "dog" := by native_decide
+
 end NlpTests.Readme
