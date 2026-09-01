@@ -1,6 +1,7 @@
 import Nlp.Core.Algebra.Monoid
 import Nlp.Core.Score.Count
 import Nlp.Core.Score.Recog
+import NlpTests.Core.Algebra.FreeSorted
 
 namespace NlpTests.Core.Algebra
 
