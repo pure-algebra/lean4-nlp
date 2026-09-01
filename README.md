@@ -28,16 +28,16 @@ Lean's standard library and is pinned to Lean 4.33.1.
   checked unlabeled/labeled attachment scoring with caller-defined punctuation policy;
 - semiring-generic single-root projective Eisner parsing, compiled labeled arc scores, an unboxed
   one-best min-cost kernel with exact backpointers, and functional plus effectful document APIs;
-- typed BIO2 labels and a compiled BIO-constrained HMM decoder with range decoding and
-  deterministic tie-breaking;
+- typed BIO2 labels, a validated named HMM tagger, checked mention extraction, flat entity-class
+  projection, and functional plus effectful sentence/document/corpus APIs;
 - CoNLL-U and Penn Treebank readers, bracket/chunk/tagging metrics, and EVALB-compatible scoring;
 - cancellation-aware, order-preserving bounded parallel corpus traversal with byte-weighted work
   planning for skewed corpora.
 
 The broader CoreNLP surface—full PTB tokenizer compatibility, morphological feature analysis,
-collocations, pretrained lexical/NER/dependency models, trainable NER features, nonprojective and
-enhanced dependency parsing, CoreNLP model formats, and production CLI/package ergonomics—is still
-incomplete.
+collocations, pretrained lexical/NER/dependency models, feature-rich CRF NER, numeric/time
+normalization, RegexNER/TokensRegex rule composition, nonprojective and enhanced dependency
+parsing, CoreNLP model formats, and production CLI/package ergonomics—is still incomplete.
 
 ## Build and verify
 
@@ -53,6 +53,7 @@ lake build pos-benchmark
 lake build unary-benchmark
 lake build compiled-viterbi-benchmark
 lake build dependency-benchmark
+lake build ner-benchmark
 ```
 
 `lake build` builds the public `NlpCore` library. `NlpTests` compiles the full theorem and
@@ -129,10 +130,16 @@ checked basic-tree semantics with sentence-local heads. This is a first-order, s
 projective, arc-factored parser; callers supply the scorer, and the repository ships no trained
 dependency model.
 
-BIO2 foundations are available through `Sequence.Bio` and `Sequence.ConstrainedHmm`. The latter
-validates the numeric HMM and tag inventory once, compiles legal predecessor buckets, and exposes
-whole-sequence and zero-copy range decoding. It is a constrained generative baseline, not a
-pretrained or feature-rich CoreNLP NER model.
+Named-entity recognition is functional through `NerTagger.compile`, `estimate`, `tagForms`,
+`tagRange`, `classesForms`, and `extractMentions`. The private-constructor model validates exact
+case-sensitive vocabulary, a collision-free OOV identifier, numeric HMM storage, canonical BIO2
+states, legal transitions, and the reserved flat background class `O`. Rich results retain typed
+BIO2 tags and full-coordinate half-open mentions; class-only projection avoids their allocation
+when a document needs only its `ner` column. `NLP.compileNerTagger`, `estimateNerTagger`,
+`tagNamedEntities`, and `tagNamedEntitiesMany` provide the checked effectful model, document, and
+ordered bounded-corpus boundaries. Sentence spans reset the sequence model independently. This is
+a caller-trained constrained generative HMM baseline, not Stanford's feature-rich CRF/rule
+combiner, pretrained models, or model format.
 
 The morphology model exposes ambiguity rather than hiding it, while `lemmaOrSelf` provides the
 conservative single-column policy used by the document annotator:
@@ -170,6 +177,9 @@ The established algorithms are credited to their primary specifications:
 - tokenizer behavior and compatibility vocabulary: Stanford's
   [tokenization](https://stanfordnlp.github.io/CoreNLP/tokenize.html) and
   [sentence splitting](https://stanfordnlp.github.io/CoreNLP/ssplit.html) documentation;
+- flat NER token-label vocabulary and compatibility boundaries: Stanford's
+  [CoreNLP NER](https://stanfordnlp.github.io/CoreNLP/ner.html) and
+  [CRF NER](https://stanfordnlp.github.io/CoreNLP/tools_crf_ner.html) documentation;
 - Unicode decimal-number and whitespace classifications: the Unicode 17
   [Derived General Category](https://www.unicode.org/Public/UCD/latest/ucd/extracted/DerivedGeneralCategory.txt)
   and [property](https://www.unicode.org/Public/UCD/latest/ucd/PropList.txt) data files.
@@ -200,6 +210,9 @@ Repository-specific implementation work is kept explicit in code and history:
 - BIO2-constrained decoding compiles legal predecessors into ascending CSR buckets and uses flat
   backpointers plus separate reachability bits so overflowed costs remain distinguishable from
   impossible paths;
+- named NER compilation rejects vocabulary/OOV collisions and the reserved `B-O`/`I-O` entity,
+  while encode-once document inference uses a checked class-only scan to avoid unused rich-output
+  allocation;
 - the effectful scheduler supports count- and weight-balanced chunks, caps dedicated threads,
   suppresses nested fan-out, observes cooperative cancellation, and preserves input/error order.
 
@@ -223,9 +236,10 @@ This is an independent implementation inspired by classical NLP tasks and publis
 specifications. It is not affiliated with Stanford University or the Stanford CoreNLP project.
 The tokenizer follows documented behavior where implemented, but does not claim exact PTBTokenizer
 or CoreNLP compatibility. The dependency parser is the independent Eisner recurrence cited above,
-not CoreNLP's transition-based neural dependency parser, and cannot load its models. No CoreNLP
-source code, model files, or generated model artifacts are included. No WordNet database or
-exception-list data is included.
+not CoreNLP's transition-based neural dependency parser, and cannot load its models. The named NER
+surface emits CoreNLP-style flat token classes, but its caller-supplied constrained HMM is not the
+CoreNLP CRF/rule pipeline and cannot load Stanford models. No CoreNLP source code, model files, or
+generated model artifacts are included. No WordNet database or exception-list data is included.
 
 ## Licensing
 
