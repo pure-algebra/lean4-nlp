@@ -12,6 +12,7 @@ import NlpTests.Pipeline.Corpora
 import NlpTests.Pipeline.Parse
 import NlpTests.Pipeline.Viterbi
 import NlpTests.Pipeline.Unary
+import NlpTests.Pipeline.Constituency
 import NlpTests.Pipeline.Dependency
 import NlpTests.Pipeline.Ner
 import NlpTests.Pipeline.Evalb

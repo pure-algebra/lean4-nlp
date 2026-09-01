@@ -13,6 +13,7 @@ import Nlp.Pipeline.Corpora
 import Nlp.Pipeline.Parse
 import Nlp.Pipeline.Viterbi
 import Nlp.Pipeline.Unary
+import Nlp.Pipeline.Constituency
 import Nlp.Pipeline.Dependency
 import Nlp.Pipeline.Ner
 import Nlp.Pipeline.Evalb

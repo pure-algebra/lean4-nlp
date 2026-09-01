@@ -49,6 +49,8 @@ arrays are public and immutable, which keeps later closure and diagnostic passes
 -/
 structure TreebankGrammar (K : Type) where
   private mk ::
+  /-- Exact mixed source namespace whose identifiers occur in categories and lexical rules. -/
+  symbols : Array String
   binary : Array (BinRule K)
   unary : Array (UnaryRule K)
   lexical : Array (LexRule K)
@@ -113,6 +115,7 @@ def toCFG (grammar : TreebankGrammar K) : CFG K :=
 /-- Apply a weight conversion without changing rule identity or category metadata. -/
 def mapWeights (f : K → L) (grammar : TreebankGrammar K) : TreebankGrammar L :=
   .mk
+    grammar.symbols
     (grammar.binary.map fun rule ↦ { rule with w := f rule.w })
     (grammar.unary.map fun rule ↦ { rule with w := f rule.w })
     (grammar.lexical.map fun rule ↦ { rule with w := f rule.w })
@@ -191,7 +194,7 @@ def mle (grammar : TreebankGrammar Count) : Except MleError (TreebankGrammar Pro
   let lexical ← grammar.lexical.mapIdxM fun source rule ↦ do
     let weight ← relativeFrequency .lexical source totals rule.lhs rule.w
     return { rule with w := weight }
-  return .mk binary unary lexical grammar.start grammar.nNT grammar.origins
+  return .mk grammar.symbols binary unary lexical grammar.start grammar.nNT grammar.origins
     grammar.realIndex grammar.syntheticIndex
 
 private structure RootedTree (T : Type) where
@@ -465,7 +468,7 @@ def induceBinarizedWithStart (interner : Interner) (start : Cat)
       throw (.inconsistentRoot treeNumber start root)
     let (next, _) ← collectB symbols treeNumber tree builder
     builder := next
-  return TreebankGrammar.mk builder.binary builder.unary builder.lexical startNT
+  return TreebankGrammar.mk interner.names builder.binary builder.unary builder.lexical startNT
     builder.origins.size builder.origins builder.realIndex builder.syntheticIndex
 
 /-- Infer the source start category from the first binarized tree and require it throughout. -/
@@ -559,7 +562,7 @@ def induceWithStart (interner : Interner) (start : Cat)
       throw (.inconsistentRoot treeNumber start root)
     let (next, _) ← collectTree symbols treeNumber tree builder
     builder := next
-  return TreebankGrammar.mk builder.binary builder.unary builder.lexical startNT
+  return TreebankGrammar.mk interner.names builder.binary builder.unary builder.lexical startNT
     builder.origins.size builder.origins builder.realIndex builder.syntheticIndex
 
 /-- Infer the start category from the first tree and induce its virtual right-binarization. -/
