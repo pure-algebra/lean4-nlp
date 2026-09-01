@@ -109,15 +109,21 @@ theorem tagDoc_semanticWF (tagger : PosTagger) (doc : Doc available)
     (semantic : doc.SemanticWF)
     (requirements : Sub [.tokens] available := by decide) :
     (tagger.tagDoc doc requirements).SemanticWF := by
-  refine ⟨tagger.tagDoc_wf doc semantic.1 requirements, ?_, ?_⟩
+  refine ⟨tagger.tagDoc_wf doc semantic.1 requirements, ⟨?_, ⟨?_, ?_⟩⟩⟩
   · intro tokens
     simpa [tagDoc, Doc.TokenWF, Doc.size] using semantic.2.1 (by simpa using tokens)
   · intro sentences
     have priorSentences : Layer.sents ∈ available := by simpa using sentences
-    have prior := semantic.2.2 priorSentences
+    have prior := semantic.2.2.1 priorSentences
     constructor
     · simpa using prior.1
     · simpa [tagDoc, Doc.SentenceWF, Doc.size] using prior.2
+  · intro dependency
+    have priorDependency : Layer.dep ∈ available := by simpa using dependency
+    have prior := semantic.2.2.2 priorDependency
+    constructor
+    · simpa using prior.1
+    · simpa [tagDoc, Doc.DependencyWF] using prior.2
 
 /-- Functional, statically indexed POS annotator. -/
 def annotator (tagger : PosTagger) : Ann Id [.tokens] [.pos] :=

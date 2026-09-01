@@ -1,4 +1,5 @@
 import Init.Data.String.Basic
+import Nlp.Core.Data.Dependency
 import Nlp.Core.Data.Span
 import Nlp.Core.Extra
 import Nlp.Core.Layer
@@ -183,11 +184,29 @@ instance instDecidableSentenceWF {ls : Layers} (doc : Doc ls) :
   rw [← strictlyIncreasingArray_eq doc.sentEnd]
   infer_instance
 
+/--
+Dependency-tree invariants under the document's sentence convention.
+
+Heads are sentence-local. Advertised sentence ends split the flattened columns into separately
+rooted trees; without a sentence layer, the whole document is one tree.
+-/
+def DependencyWF {ls : Layers} (doc : Doc ls) : Prop :=
+  if Layer.sents ∈ ls then
+    Dependency.DocumentTreeWF doc.head doc.sentEnd
+  else
+    Dependency.SentenceTreeWF doc.head
+
+instance instDecidableDependencyWF {ls : Layers} (doc : Doc ls) :
+    Decidable doc.DependencyWF := by
+  unfold DependencyWF
+  infer_instance
+
 /-- Full semantic boundary invariant layered on top of the compatible column-size invariant. -/
 def SemanticWF {ls : Layers} (doc : Doc ls) : Prop :=
   doc.WF ∧
     (Layer.tokens ∈ ls → doc.TokenWF) ∧
-    (Layer.sents ∈ ls → Layer.tokens ∈ ls ∧ doc.SentenceWF)
+    (Layer.sents ∈ ls → Layer.tokens ∈ ls ∧ doc.SentenceWF) ∧
+    (Layer.dep ∈ ls → Layer.tokens ∈ ls ∧ doc.DependencyWF)
 
 instance instDecidableSemanticWF {ls : Layers} (doc : Doc ls) :
     Decidable doc.SemanticWF := by
@@ -206,12 +225,22 @@ theorem semanticWF_token {ls : Layers} {doc : Doc ls} (semantic : doc.SemanticWF
 /-- A semantically valid sentence layer always carries its token layer. -/
 theorem semanticWF_tokens_of_sents {ls : Layers} {doc : Doc ls}
     (semantic : doc.SemanticWF) (sentences : Layer.sents ∈ ls) : Layer.tokens ∈ ls :=
-  (semantic.2.2 sentences).1
+  (semantic.2.2.1 sentences).1
 
 /-- Extract sentence-boundary invariants from a semantically valid sentence document. -/
 theorem semanticWF_sentence {ls : Layers} {doc : Doc ls} (semantic : doc.SemanticWF)
     (sentences : Layer.sents ∈ ls) : doc.SentenceWF :=
-  (semantic.2.2 sentences).2
+  (semantic.2.2.1 sentences).2
+
+/-- A semantically valid dependency layer always carries its token layer. -/
+theorem semanticWF_tokens_of_dep {ls : Layers} {doc : Doc ls}
+    (semantic : doc.SemanticWF) (dependency : Layer.dep ∈ ls) : Layer.tokens ∈ ls :=
+  (semantic.2.2.2 dependency).1
+
+/-- Extract the sentence-aware dependency-tree invariant. -/
+theorem semanticWF_dependency {ls : Layers} {doc : Doc ls} (semantic : doc.SemanticWF)
+    (dependency : Layer.dep ∈ ls) : doc.DependencyWF :=
+  (semantic.2.2.2 dependency).2
 
 /-- Every advertised token span is valid for the document's exact source string. -/
 theorem semanticWF_span {ls : Layers} {doc : Doc ls} (semantic : doc.SemanticWF)
@@ -245,6 +274,7 @@ inductive SpanEndpoint where
 inductive SemanticError where
   | structural (cause : ValidationError)
   | sentenceLayerRequiresTokens
+  | dependencyLayerRequiresTokens
   | emptyTokenForm (index : Nat)
   | emptyTokenSpan (index : Nat) (span : Span)
   | reversedTokenSpan (index : Nat) (span : Span)
@@ -257,6 +287,8 @@ inductive SemanticError where
   | sentenceEndOutOfBounds (index ending tokens : Nat)
   | nonIncreasingSentenceEnds (leftIndex left right : Nat)
   | finalSentenceEnd (expected found : Nat)
+  | invalidDependencyTree (cause : Dependency.TreeError)
+  | invalidDependencyDocument (cause : Dependency.DocumentTreeError)
   | inconsistentSemanticState (textBytes tokens sentenceEnds : Nat)
   deriving Repr, DecidableEq, Inhabited
 
@@ -386,23 +418,36 @@ private def sentenceError? (doc : Doc ls) : Option SemanticError :=
             if ending = doc.size then none else some (.finalSentenceEnd doc.size ending)
           | none => some (.missingSentenceEnd doc.size)
 
+private def dependencyError? (doc : Doc ls) : Option SemanticError :=
+  if Layer.sents ∈ ls then
+    match Dependency.checkDocumentTrees doc.head doc.sentEnd with
+    | .ok () => none
+    | .error cause => some (.invalidDependencyDocument cause)
+  else
+    match Dependency.checkSentenceTree doc.head with
+    | .ok () => none
+    | .error cause => some (.invalidDependencyTree cause)
+
 private def semanticError (doc : Doc ls) : SemanticError :=
   match checked doc with
   | .error cause => .structural cause
   | .ok _ =>
     if Layer.sents ∈ ls ∧ Layer.tokens ∉ ls then
       .sentenceLayerRequiresTokens
-    else if Layer.tokens ∈ ls then
-      match tokenError? doc with
+    else if Layer.dep ∈ ls ∧ Layer.tokens ∉ ls then
+      .dependencyLayerRequiresTokens
+    else
+      let tokenCause := if Layer.tokens ∈ ls then tokenError? doc else none
+      match tokenCause with
       | some cause => cause
       | none =>
-        if Layer.sents ∈ ls then
-          (sentenceError? doc).getD
+        let sentenceCause := if Layer.sents ∈ ls then sentenceError? doc else none
+        match sentenceCause with
+        | some cause => cause
+        | none =>
+          let dependencyCause := if Layer.dep ∈ ls then dependencyError? doc else none
+          dependencyCause.getD
             (.inconsistentSemanticState doc.text.utf8ByteSize doc.size doc.sentEnd.size)
-        else
-          .inconsistentSemanticState doc.text.utf8ByteSize doc.size doc.sentEnd.size
-    else
-      .inconsistentSemanticState doc.text.utf8ByteSize doc.size doc.sentEnd.size
 
 /-- Validate all layer, token-span, and sentence-boundary semantics at an external boundary. -/
 def checkedSemantic (doc : Doc ls) : Except SemanticError (Doc ls) :=

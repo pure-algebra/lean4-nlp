@@ -58,15 +58,21 @@ theorem lemmatizeDoc_semanticWF (model : Model) (doc : Doc available)
     (semantic : doc.SemanticWF)
     (requirements : Sub [.tokens, .pos] available := by decide) :
     (model.lemmatizeDoc doc requirements).SemanticWF := by
-  refine ⟨model.lemmatizeDoc_wf doc semantic.1 requirements, ?_, ?_⟩
+  refine ⟨model.lemmatizeDoc_wf doc semantic.1 requirements, ⟨?_, ⟨?_, ?_⟩⟩⟩
   · intro tokens
     simpa [lemmatizeDoc, Doc.TokenWF, Doc.size] using semantic.2.1 (by simpa using tokens)
   · intro sentences
     have priorSentences : Layer.sents ∈ available := by simpa using sentences
-    have prior := semantic.2.2 priorSentences
+    have prior := semantic.2.2.1 priorSentences
     constructor
     · simpa using prior.1
     · simpa [lemmatizeDoc, Doc.SentenceWF, Doc.size] using prior.2
+  · intro dependency
+    have priorDependency : Layer.dep ∈ available := by simpa using dependency
+    have prior := semantic.2.2.2 priorDependency
+    constructor
+    · simpa using prior.1
+    · simpa [lemmatizeDoc, Doc.DependencyWF] using prior.2
 
 /-- Functional, statically indexed English lemma annotator. -/
 def annotator (model : Model) : Ann Id [.tokens, .pos] [.lemma] :=

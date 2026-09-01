@@ -173,6 +173,49 @@ private def sentenceDoc : Doc [.sents, .tokens] :=
 
 example : sentenceDoc.SemanticWF := by native_decide
 
+private def dependencyDoc : Doc [.dep, .tokens] :=
+  { tokenDoc with head := #[2, 0], deprel := #["det", "root"] }
+
+example : dependencyDoc.SemanticWF := by native_decide
+
+example (semantic : dependencyDoc.SemanticWF) : dependencyDoc.DependencyWF :=
+  Doc.semanticWF_dependency semantic (by decide)
+
+private def cyclicDependency : Doc [.dep, .tokens] :=
+  { text := "a b c", spans := #[⟨0, 1⟩, ⟨2, 3⟩, ⟨4, 5⟩], forms := #["a", "b", "c"],
+    head := #[0, 3, 2], deprel := #["root", "dep", "dep"] }
+
+example : ¬cyclicDependency.SemanticWF := by native_decide
+
+example :
+    semanticErrorOf (Doc.checkedSemantic cyclicDependency) =
+      some (.invalidDependencyTree (.cycle 3 2)) := by
+  native_decide
+
+private def dependencyWithoutTokens : Doc [.dep] := { text := "" }
+
+example : ¬dependencyWithoutTokens.SemanticWF := by native_decide
+
+example :
+    semanticErrorOf (Doc.checkedSemantic dependencyWithoutTokens) =
+      some .dependencyLayerRequiresTokens := by
+  native_decide
+
+private def sentenceLocalDependencies : Doc [.dep, .sents, .tokens] :=
+  { text := "a b c d", spans := #[⟨0, 1⟩, ⟨2, 3⟩, ⟨4, 5⟩, ⟨6, 7⟩],
+    forms := #["a", "b", "c", "d"], sentEnd := #[2, 4],
+    head := #[0, 1, 2, 0], deprel := #["root", "dep", "dep", "root"] }
+
+example : sentenceLocalDependencies.SemanticWF := by native_decide
+
+private def badSecondDependency : Doc [.dep, .sents, .tokens] :=
+  { sentenceLocalDependencies with head := #[0, 1, 2, 1] }
+
+example :
+    semanticErrorOf (Doc.checkedSemantic badSecondDependency) =
+      some (.invalidDependencyDocument (.sentence 1 2 4 .noRoot)) := by
+  native_decide
+
 private def sentenceWithoutTokens : Doc [.sents] := { text := "" }
 
 example : ¬sentenceWithoutTokens.SemanticWF := by native_decide
