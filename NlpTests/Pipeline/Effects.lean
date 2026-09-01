@@ -10,6 +10,7 @@ example : Config := {
   numThreads := 4
   maxLen := 256
   parallelMinGrain := 128
+  parallelMinWeight := 4096
   maxDedicatedThreads := 4
 }
 

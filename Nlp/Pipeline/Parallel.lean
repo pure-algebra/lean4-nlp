@@ -1,5 +1,6 @@
 import Init.System.Platform
 import Nlp.Pipeline.Runtime
+import Std.Tactic.Do
 
 /-!
 # Bounded, ordered corpus concurrency
@@ -13,6 +14,8 @@ cannot preempt an arbitrary pure inner loop.
 -/
 
 namespace Nlp.Parallel
+
+open Std.Do
 
 /-- A half-open range `[start, stop)`. -/
 structure Chunk where
@@ -58,6 +61,220 @@ def chunkPlan (size workers minGrain : Nat) : Array Chunk :=
   let count := chunkCount size workers minGrain
   Array.ofFn (n := count) fun index ↦ chunkAt size count index
 
+/-- Total scheduling weight, treating zero-cost items as one unit so every item makes progress. -/
+def totalWeight (weights : Array Nat) : Nat :=
+  weights.foldl (fun total weight ↦ total + max weight 1) 0
+
+/-- Normalized aggregate weight of one item range. -/
+private def chunkWeight (weights : Array Nat) (chunk : Chunk) : Nat := Id.run do
+  let mut total := 0
+  for index in [chunk.start:chunk.stop] do
+    total := total + max weights[index]! 1
+  return total
+
+/-- Build the maximum left-to-right partition whose chunks meet the normalized weight grain. -/
+private def grainChunkPlan (weights : Array Nat) (minWeight : Nat) : Array Chunk := Id.run do
+  if weights.isEmpty then
+    return #[]
+  let grain := max minWeight 1
+  let mut output := Array.emptyWithCapacity weights.size
+  let mut start := 0
+  let mut pendingWeight := 0
+  for index in [0:weights.size] do
+    pendingWeight := pendingWeight + max weights[index]! 1
+    if grain ≤ pendingWeight then
+      output := output.push ⟨start, index + 1⟩
+      start := index + 1
+      pendingWeight := 0
+  if start < weights.size then
+    if output.isEmpty then
+      output := output.push ⟨0, weights.size⟩
+    else
+      let previous := output.back!
+      output := output.pop.push ⟨previous.start, weights.size⟩
+  return output
+
+/-- Weight-balance already grain-feasible atoms down to an explicit chunk count. -/
+private def balanceGrainChunks (weights : Array Nat) (atoms : Array Chunk)
+    (requestedCount : Nat) : Array Chunk := Id.run do
+  if atoms.isEmpty then
+    return #[]
+  let count := min atoms.size (max requestedCount 1)
+  if count ≤ 1 then
+    return #[⟨0, weights.size⟩]
+  let total := totalWeight weights
+  let mut output := Array.emptyWithCapacity count
+  let mut atomStart := 0
+  let mut atomStop := 0
+  let mut consumedWeight := 0
+  for boundaryIndex in [1:count] do
+    let target := chunkBoundary total count boundaryIndex
+    let maxStop := atoms.size - (count - boundaryIndex)
+    let mut choosing := true
+    while choosing && atomStop < maxStop && consumedWeight < target do
+      let candidateWeight := consumedWeight + chunkWeight weights atoms[atomStop]!
+      if atomStart < atomStop && target ≤ candidateWeight &&
+          target - consumedWeight ≤ candidateWeight - target then
+        choosing := false
+      else
+        consumedWeight := candidateWeight
+        atomStop := atomStop + 1
+    if atomStop = atomStart then
+      consumedWeight := consumedWeight + chunkWeight weights atoms[atomStop]!
+      atomStop := atomStop + 1
+    output := output.push ⟨atoms[atomStart]!.start, atoms[atomStop - 1]!.stop⟩
+    atomStart := atomStop
+  return output.push ⟨atoms[atomStart]!.start, weights.size⟩
+
+/-
+Greedy grain atoms maximize feasible parallelism: every cut is the earliest prefix reaching the
+grain, and any light final suffix is merged backward. Balancing only groups these atoms, so it
+cannot create an underweight chunk or lose coverage.
+-/
+
+/--
+Split weighted work into deterministic, contiguous, nonempty chunks.
+
+The planner first constructs the maximum grain-feasible contiguous partition, then groups those
+atoms around cumulative-weight targets when the worker cap is smaller. A single heavy item remains
+indivisible, zero weights count as one, and a final light remainder is merged backward.
+-/
+def weightedChunkPlan (weights : Array Nat) (workers minWeight : Nat) : Array Chunk :=
+  let atoms := grainChunkPlan weights minWeight
+  if atoms.size ≤ max workers 1 then atoms
+  else balanceGrainChunks weights atoms (max workers 1)
+
+set_option mvcgen.warning false in
+private theorem balanceGrainChunks_size (weights : Array Nat) (atoms : Array Chunk)
+    (requestedCount : Nat) :
+    (balanceGrainChunks weights atoms requestedCount).size =
+      if atoms.isEmpty then 0 else min atoms.size (max requestedCount 1) := by
+  have atomsSizePos : atoms.isEmpty ≠ true → 0 < atoms.size := by
+    intro h
+    apply Array.size_pos_iff.mpr
+    simpa using h
+  generalize hresult : balanceGrainChunks weights atoms requestedCount = result
+  apply Id.of_wp_run_eq hresult
+  mvcgen [balanceGrainChunks] invariants
+  | inv1 => ⇓⟨cursor, state⟩ => ⌜state.fst.size = cursor.prefix.length⌝
+  | inv2 => fun state ↦ ⟨if state.snd.snd then atoms.size - state.fst + 1 else 0⟩
+  | inv3 => ⇓_ => ⌜True⌝
+  with grind
+
+set_option mvcgen.warning false in
+private theorem grainChunkPlan_isEmpty (weights : Array Nat) (minWeight : Nat) :
+    (grainChunkPlan weights minWeight).isEmpty = weights.isEmpty := by
+  generalize hresult : grainChunkPlan weights minWeight = result
+  apply Id.of_wp_run_eq hresult
+  mvcgen [grainChunkPlan] invariants
+  | inv1 => ⇓⟨cursor, state⟩ =>
+      ⌜state.snd.fst ≤ cursor.prefix.length ∧
+        (state.fst.isEmpty = true → state.snd.fst = 0)⌝
+  with grind
+
+set_option mvcgen.warning false in
+private theorem grainChunkPlan_size_le (weights : Array Nat) (minWeight : Nat) :
+    (grainChunkPlan weights minWeight).size ≤ weights.size := by
+  generalize hresult : grainChunkPlan weights minWeight = result
+  apply Id.of_wp_run_eq hresult
+  mvcgen [grainChunkPlan] invariants
+  | inv1 => ⇓⟨cursor, state⟩ => ⌜state.fst.size ≤ cursor.prefix.length⌝
+  with grind
+
+private theorem mem_of_mem_pop {item : α} {items : Array α} :
+    item ∈ items.pop → item ∈ items := by
+  simp only [Array.mem_iff_getElem]
+  rintro ⟨index, hindex, hitem⟩
+  refine ⟨index, ?_, ?_⟩
+  · have hle : items.pop.size ≤ items.size := by simp
+    exact Nat.lt_of_lt_of_le hindex hle
+  · simpa only [Array.getElem_pop] using hitem
+
+private theorem back_bang_mem [Inhabited α] {items : Array α}
+    (hitems : items.isEmpty ≠ true) :
+    items.back! ∈ items := by
+  have hsize : items.size ≠ 0 := by
+    simpa [Array.size_eq_zero_iff] using hitems
+  have hpush := Array.eq_push_pop_back!_of_size_ne_zero hsize
+  have : items.back! ∈ items.pop.push items.back! := by simp
+  simpa only [← hpush] using this
+
+set_option mvcgen.warning false in
+private theorem grainChunkPlan_chunks_wf (weights : Array Nat) (minWeight : Nat) :
+    ∀ chunk ∈ grainChunkPlan weights minWeight,
+      chunk.start < chunk.stop ∧ chunk.stop ≤ weights.size := by
+  generalize hresult : grainChunkPlan weights minWeight = result
+  apply Id.of_wp_run_eq hresult
+  mvcgen [grainChunkPlan] invariants
+  | inv1 => ⇓⟨cursor, state⟩ =>
+      ⌜state.snd.fst ≤ cursor.prefix.length ∧
+        ∀ chunk ∈ state.fst,
+          chunk.start < chunk.stop ∧ chunk.stop ≤ state.snd.fst⌝
+  with grind [mem_of_mem_pop, back_bang_mem]
+
+set_option mvcgen.warning false in
+private theorem grainChunkPlan_back_stop (weights : Array Nat) (minWeight : Nat)
+    (hweights : 0 < weights.size) :
+    (grainChunkPlan weights minWeight).back!.stop = weights.size := by
+  generalize hresult : grainChunkPlan weights minWeight = result
+  apply Id.of_wp_run_eq hresult
+  mvcgen [grainChunkPlan] invariants
+  | inv1 => ⇓⟨cursor, state⟩ =>
+      ⌜state.snd.fst ≤ cursor.prefix.length ∧
+        (state.fst.isEmpty = true → state.snd.fst = 0) ∧
+        (state.fst.isEmpty = false → state.fst.back!.stop = state.snd.fst)⌝
+  with simp_all <;> grind
+
+/-- The weighted planner never creates more chunks than the normalized worker ceiling. -/
+theorem weightedChunkPlan_size_le (weights : Array Nat) (workers minWeight : Nat) :
+    (weightedChunkPlan weights workers minWeight).size ≤ max workers 1 := by
+  simp only [weightedChunkPlan]
+  split
+  · assumption
+  · rw [balanceGrainChunks_size]
+    split <;> omega
+
+/-- Weighted chunks never outnumber the work items they cover. -/
+theorem weightedChunkPlan_size_le_input (weights : Array Nat) (workers minWeight : Nat) :
+    (weightedChunkPlan weights workers minWeight).size ≤ weights.size := by
+  simp only [weightedChunkPlan]
+  split
+  · exact grainChunkPlan_size_le weights minWeight
+  · rw [balanceGrainChunks_size]
+    split
+    · omega
+    · exact Nat.le_trans (Nat.min_le_left ..) (grainChunkPlan_size_le weights minWeight)
+
+/-- The weighted planner is empty exactly when its input is empty. -/
+@[simp] theorem weightedChunkPlan_isEmpty (weights : Array Nat) (workers minWeight : Nat) :
+    (weightedChunkPlan weights workers minWeight).isEmpty = weights.isEmpty := by
+  simp only [weightedChunkPlan]
+  split
+  · exact grainChunkPlan_isEmpty weights minWeight
+  · have hsize := balanceGrainChunks_size weights (grainChunkPlan weights minWeight)
+      (max workers 1)
+    have hempty := grainChunkPlan_isEmpty weights minWeight
+    grind
+
+/-- Nonempty weighted input always produces at least one chunk. -/
+theorem weightedChunkPlan_size_pos (weights : Array Nat) (workers minWeight : Nat)
+    (hweights : 0 < weights.size) :
+    0 < (weightedChunkPlan weights workers minWeight).size := by
+  have hempty := weightedChunkPlan_isEmpty weights workers minWeight
+  grind
+
+/-- Weighted planning preserves nonemptiness in both directions. -/
+theorem weightedChunkPlan_size_pos_iff (weights : Array Nat) (workers minWeight : Nat) :
+    0 < (weightedChunkPlan weights workers minWeight).size ↔ 0 < weights.size := by
+  constructor
+  · exact fun h ↦ Nat.lt_of_lt_of_le h (weightedChunkPlan_size_le_input weights workers minWeight)
+  · exact weightedChunkPlan_size_pos weights workers minWeight
+
+@[simp] theorem weightedChunkPlan_empty (workers minWeight : Nat) :
+    weightedChunkPlan #[] workers minWeight = #[] := by
+  exact Array.empty_of_isEmpty (by simp)
+
+/-! Count-balanced planner proofs follow. -/
 @[simp] theorem chunkBoundary_zero (size count : Nat) :
     chunkBoundary size count 0 = 0 := by
   simp [chunkBoundary]
@@ -301,6 +518,19 @@ def validPlan (size : Nat) (chunks : Array Chunk) : Bool := Id.run do
     cursor := chunk.stop
   return valid && cursor == size
 
+/-
+The weighted runtime validates the resulting partition before indexing. The named atom and
+balancing phases also keep the planner available for direct executable testing.
+-/
+
+/-- Executable checker that a valid weighted multi-chunk plan meets its grain. -/
+def weightedCoarsePlan (weights : Array Nat) (minWeight : Nat)
+    (chunks : Array Chunk) : Bool :=
+  if validPlan weights.size chunks then
+    chunks.size ≤ 1 || chunks.all fun chunk ↦ max minWeight 1 ≤ chunkWeight weights chunk
+  else
+    false
+
 /-- Executable checker that chunk lengths differ by at most one. -/
 def balancedPlan (chunks : Array Chunk) : Bool :=
   match chunks[0]? with
@@ -374,6 +604,10 @@ def boundedPlan (workers : Nat) (chunks : Array Chunk) : Bool :=
     boundedPlan workers (chunkPlan size workers minGrain) = true := by
   simp [boundedPlan, chunkCount_le_workers]
 
+@[simp] theorem boundedPlan_weightedChunkPlan (weights : Array Nat) (workers minWeight : Nat) :
+    boundedPlan workers (weightedChunkPlan weights workers minWeight) = true := by
+  simp [boundedPlan, weightedChunkPlan_size_le]
+
 @[simp] theorem chunkPlan_zero (workers minGrain : Nat) :
     chunkPlan 0 workers minGrain = #[] := by
   simp [chunkPlan, chunkCount]
@@ -406,18 +640,13 @@ private def releaseContexts (tasks : Array (Running T)) : BaseIO Unit := do
   for running in tasks do
     running.cancellation.cancel .cancel
 
-/--
-Apply one effectful worker to each coarse chunk and preserve chunk order in the result.
-
-The array is shared read-only after tasks start. A multi-chunk traversal suppresses nested
-parallelism in child environments. Every typed error cancels and drains every sibling before it is
-re-thrown.
--/
-def traverseChunks (input : Array α)
+/-- Execute a validated contiguous chunk plan with stable result and error order. -/
+private def traversePlannedChunks (input : Array α) (chunks : Array Chunk)
     (worker : Array α → Nat → Nat → NLP β) : NLP (Array β) := do
   NLP.checkCancelled
+  unless validPlan input.size chunks do
+    throw <| .invalidConfig "parallel planner produced an invalid chunk partition"
   let env ← read
-  let chunks := chunkPlan input.size (workersFor env) env.config.parallelMinGrain
   if chunks.size ≤ 1 then
     let mut output := Array.emptyWithCapacity chunks.size
     for chunk in chunks do
@@ -453,6 +682,44 @@ def traverseChunks (input : Array α)
     liftM <| cancelAndDrain running
     throw error
 
+/--
+Apply one effectful worker to each coarse chunk and preserve chunk order in the result.
+
+The array is shared read-only after tasks start. A multi-chunk traversal suppresses nested
+parallelism in child environments. Every typed error cancels and drains every sibling before it is
+re-thrown.
+-/
+def traverseChunks (input : Array α)
+    (worker : Array α → Nat → Nat → NLP β) : NLP (Array β) := do
+  NLP.checkCancelled
+  let env ← read
+  let chunks := chunkPlan input.size (workersFor env) env.config.parallelMinGrain
+  traversePlannedChunks input chunks worker
+
+/--
+Apply one effectful worker to deterministic contiguous chunks balanced by an item weight.
+
+This is intended for skewed inputs such as documents whose tokenization cost tracks UTF-8 byte
+size more closely than document count. Zero weights are normalized to one scheduling unit.
+-/
+def traverseWeightedChunks (input : Array α) (weight : α → Nat)
+    (worker : Array α → Nat → Nat → NLP β) : NLP (Array β) := do
+  NLP.checkCancelled
+  let env ← read
+  let mut weights := Array.emptyWithCapacity input.size
+  for item in input do
+    NLP.checkCancelled
+    weights := weights.push (weight item)
+  NLP.checkCancelled
+  let workers := workersFor env
+  let chunks := weightedChunkPlan weights workers env.config.parallelMinWeight
+  unless boundedPlan workers chunks do
+    throw <| .invalidConfig "weighted planner exceeded the worker-count ceiling"
+  unless weightedCoarsePlan weights env.config.parallelMinWeight chunks do
+    throw <| .invalidConfig "weighted planner produced an invalid or underweight partition"
+  NLP.checkCancelled
+  traversePlannedChunks input chunks worker
+
 end Nlp.Parallel
 
 namespace Nlp.NLP
@@ -461,5 +728,10 @@ namespace Nlp.NLP
 @[inline] def traverseChunks (input : Array α)
     (worker : Array α → Nat → Nat → NLP β) : NLP (Array β) :=
   Nlp.Parallel.traverseChunks input worker
+
+/-- Preferred effectful facade for byte- or cost-weighted ordered chunk traversal. -/
+@[inline] def traverseWeightedChunks (input : Array α) (weight : α → Nat)
+    (worker : Array α → Nat → Nat → NLP β) : NLP (Array β) :=
+  Nlp.Parallel.traverseWeightedChunks input weight worker
 
 end Nlp.NLP

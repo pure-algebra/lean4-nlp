@@ -11,9 +11,15 @@ namespace Nlp
 
 /-- Stable runtime knobs shared by model loaders and corpus drivers. -/
 structure Config where
+  /-- Requested top-level worker count; zero selects the available hardware count. -/
   numThreads : Nat := 1
+  /-- Maximum token length accepted by bounded model kernels. -/
   maxLen : Nat := 400
+  /-- Minimum item count in each chunk of a count-balanced traversal. -/
   parallelMinGrain : Nat := 65536
+  /-- Minimum normalized aggregate weight in each chunk of a weighted traversal. -/
+  parallelMinWeight : Nat := 65536
+  /-- Hard ceiling on dedicated worker threads created by one outer traversal. -/
   maxDedicatedThreads : Nat := 8
   deriving Repr, DecidableEq, Inhabited
 

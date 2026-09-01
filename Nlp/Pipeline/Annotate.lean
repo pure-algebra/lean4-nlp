@@ -63,9 +63,32 @@ private def traverseArrayCore (input : Array α) (worker : α → NLP β) : NLP 
       output := output.push value
   return output
 
+/-- Byte- or cost-weighted counterpart of `traverseArrayCore`. -/
+private def traverseArrayWeightedCore (input : Array α) (weight : α → Nat)
+    (worker : α → NLP β) : NLP (Array β) := do
+  let chunks ← traverseWeightedChunks input weight fun source start stop ↦ do
+    let mut output := Array.emptyWithCapacity (stop - start)
+    for index in [start:stop] do
+      checkCancelled
+      match source[index]? with
+      | some value => output := output.push (← worker value)
+      | none =>
+        throw <| .invalidConfig "weighted parallel chunk escaped its source array"
+    return output
+  let mut output := Array.emptyWithCapacity input.size
+  for chunk in chunks do
+    for value in chunk do
+      output := output.push value
+  return output
+
 /-- Apply the configured traversal grain to an ordered, bounded array traversal. -/
 @[inline] def traverseArray (input : Array α) (worker : α → NLP β) : NLP (Array β) :=
   traverseArrayCore input worker
+
+/-- Apply a pure scheduling weight to an ordered, bounded array traversal. -/
+@[inline] def traverseArrayWeighted (input : Array α) (weight : α → Nat)
+    (worker : α → NLP β) : NLP (Array β) :=
+  traverseArrayWeightedCore input weight worker
 
 /--
 Traverse with a cost-informed item grain while preserving every other runtime setting.
@@ -77,6 +100,12 @@ normalized to one by the planner.
     (worker : α → NLP β) : NLP (Array β) :=
   withConfig (fun config ↦ { config with parallelMinGrain := minGrain }) <|
     traverseArrayCore input worker
+
+/-- Traverse with a minimum aggregate weight per scheduling unit. -/
+@[inline] def traverseArrayWeightedWithMinWeight (minWeight : Nat) (input : Array α)
+    (weight : α → Nat) (worker : α → NLP β) : NLP (Array β) :=
+  withConfig (fun config ↦ { config with parallelMinWeight := minWeight }) <|
+    traverseArrayWeightedCore input weight worker
 
 /-- Annotate documents concurrently when the configured grain admits it, preserving order. -/
 @[inline] def annotateMany (ann : Ann NLP requires produces)
