@@ -3,8 +3,9 @@ import Nlp.Grammar.CNF
 /-!
 # Derived indexes for CNF grammars
 
-`IndexedCNF` groups binary productions by their pair of right-hand-side nonterminals.  It is
-derived, reusable parser data: the source `CNF` remains the serialization/specification boundary.
+`IndexedCNF` groups binary productions by their pair of right-hand-side nonterminals and retains
+their source-array positions for deterministic provenance.  It is derived, reusable parser data:
+the source `CNF` remains the serialization/specification boundary.
 -/
 
 namespace Nlp
@@ -13,6 +14,8 @@ namespace Nlp
 structure IndexedCNF (K : Type) where
   grammar : CNF K
   binSorted : Array (BinRule K)
+  /-- Original `CNF.bin` index for each parallel entry of `binSorted`. -/
+  binSource : Array Nat
   /-- Bucket `key` occupies `[pairStart[key], pairStart[key + 1])` in `binSorted`. -/
   pairStart : Array Nat
 deriving Inhabited
@@ -43,13 +46,16 @@ def ofCNF [Inhabited K] (grammar : CNF K) : IndexedCNF K := Id.run do
 
   let mut fill := pairStart
   let mut binSorted : Array (BinRule K) := Array.replicate total default
-  for rule in grammar.bin do
+  let mut binSource : Array Nat := Array.replicate total 0
+  for sourceIndex in [0:grammar.bin.size] do
+    let rule := grammar.bin[sourceIndex]!
     if ruleInBounds grammar.nNT rule then
       let key := pairKey grammar.nNT rule.r1.toNat rule.r2.toNat
       let target := fill[key]!
       binSorted := binSorted.set! target rule
+      binSource := binSource.set! target sourceIndex
       fill := fill.set! key (target + 1)
-  return ⟨grammar, binSorted, pairStart⟩
+  return ⟨grammar, binSorted, binSource, pairStart⟩
 
 end IndexedCNF
 

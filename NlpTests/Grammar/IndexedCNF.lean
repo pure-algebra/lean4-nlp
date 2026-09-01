@@ -16,6 +16,8 @@ example : indexed.pairStart = #[0, 0, 1, 1, 1, 1, 3, 3, 3, 3] := by native_decid
 
 example : indexed.binSorted.map (fun rule ↦ rule.lhs) = #[1, 0, 2] := by native_decide
 
+example : indexed.binSource = #[1, 0, 2] := by native_decide
+
 private def withOutOfBoundsRule : CNF Nat :=
   { grammar with bin := grammar.bin.push ⟨0, 9, 0, 40⟩ }
 
