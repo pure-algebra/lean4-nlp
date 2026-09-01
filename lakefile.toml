@@ -63,3 +63,15 @@ root = "Bench.Constituency"
 [[lean_exe]]
 name = "regexner-benchmark"
 root = "Bench.RegexNer"
+
+[[lean_exe]]
+name = "numeric-benchmark"
+root = "Bench.Numeric"
+
+[[lean_exe]]
+name = "tree-query-benchmark"
+root = "Bench.TreeQuery"
+
+[[lean_exe]]
+name = "graph-query-benchmark"
+root = "Bench.GraphQuery"
