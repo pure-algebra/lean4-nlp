@@ -3,5 +3,6 @@ import NlpTests.Dependency.ArcScores
 import NlpTests.Dependency.Viterbi
 import NlpTests.Dependency.Parser
 import NlpTests.Dependency.Arborescence
+import NlpTests.Dependency.EnglishEnhanced
 
-/-! Dependency parsing theorem and regression tests. -/
+/-! Basic, exact-decoding, graph, and enhanced-dependency regression tests. -/
