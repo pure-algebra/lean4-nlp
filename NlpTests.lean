@@ -8,6 +8,7 @@ import NlpTests.Sequence
 import NlpTests.Dependency
 import NlpTests.Tokenize
 import NlpTests.Morphology
+import NlpTests.Normalize
 import NlpTests.IO
 import NlpTests.Eval
 import NlpTests.Eval.Dependency
