@@ -4,6 +4,7 @@ import NlpTests.Pipeline.Effects
 import NlpTests.Pipeline.Files
 import NlpTests.Pipeline.Parallel
 import NlpTests.Pipeline.Annotate
+import NlpTests.Pipeline.Tokenize
 import NlpTests.Pipeline.Corpora
 import NlpTests.Pipeline.Parse
 import NlpTests.Pipeline.Viterbi

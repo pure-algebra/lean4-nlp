@@ -5,6 +5,7 @@ import Nlp.Pipeline.Runtime
 import Nlp.Pipeline.Files
 import Nlp.Pipeline.Parallel
 import Nlp.Pipeline.Annotate
+import Nlp.Pipeline.Tokenize
 import Nlp.Pipeline.Corpora
 import Nlp.Pipeline.Parse
 import Nlp.Pipeline.Viterbi
