@@ -14,6 +14,7 @@ import Nlp.Pipeline.Parse
 import Nlp.Pipeline.Viterbi
 import Nlp.Pipeline.Unary
 import Nlp.Pipeline.Dependency
+import Nlp.Pipeline.Ner
 import Nlp.Pipeline.Evalb
 
 /-!
