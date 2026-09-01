@@ -18,6 +18,8 @@ Lean's standard library and is pinned to Lean 4.33.1.
   elimination with exact rule provenance, and checked grammar compilation;
 - semiring-generic CKY, compiled sparse/dense CKY, one-best extraction, and source-preserving
   Viterbi derivations with adaptive pair indexing and exact unary-tree restoration;
+- named constituency trees and checked sentence/document parsing with source-surface OOV
+  preservation, retained treebank namespaces, and zero-slice sentence-range CKY;
 - linear-chain dynamic programming, a smoothed bigram HMM, and a validated named POS tagger with
   exact vocabulary lookup, reserved OOV handling, and sentence-boundary resets;
 - source-preserving UTF-8 tokenization with source-byte spans, a persistent streaming cursor, exact
@@ -54,6 +56,7 @@ lake build unary-benchmark
 lake build compiled-viterbi-benchmark
 lake build dependency-benchmark
 lake build ner-benchmark
+lake build constituency-benchmark
 ```
 
 `lake build` builds the public `NlpCore` library. `NlpTests` compiles the full theorem and
@@ -120,6 +123,16 @@ Unary-aware one-best parsing is functional through `UnaryViterbiModel.compile` a
 cancellation, sentence-length policy, and ordered bounded batches. The adaptive Viterbi compiler
 uses a compact sparse pair index for large nonterminal spaces while preserving exact emitted rule
 ordinals for restoration.
+
+Named constituency parsing is functional through `ConstituencyModel.compile`, `parseForms?`, and
+`parseDocument?`. Treebank induction retains the exact mixed symbol namespace, so callers cannot
+silently relabel a compiled grammar. Unknown lexical forms use a checked grammar terminal for CKY
+while named leaves preserve the original surface string. `NLP.compileConstituencyModel`,
+`parseConstituency`, and `parseConstituencyMany` add checked document semantics, chart policy,
+cooperative cancellation, typed invariant failures, cubic-work scheduling, and stable corpus
+order. Sentence kernels read normalized ranges from one encoded document column without allocating
+per-sentence token slices. Callers still supply the grammar and OOV terminal; no pretrained
+constituency model is bundled.
 
 Projective dependency parsing is functional through `Dependency.Parser.compile`, `parse?`, and
 `parseDocument?`. `NLP.compileDependencyParser`, `parseDependencies`, and
@@ -190,6 +203,9 @@ Repository-specific implementation work is kept explicit in code and history:
 - lexical buckets and nonzero-cell lists avoid scanning irrelevant productions and chart rows;
 - width-major triangular charts use flat storage with checked layout theorems;
 - Viterbi backpointers preserve source production ordinals and deterministic tie-breaking;
+- normalized range-local Viterbi charts avoid sentence-slice allocation, distinguish an
+  unreachable goal from impossible generated-chart extraction failure, and resolve restored trees
+  in one cursor-threaded traversal without constructing a closure graph;
 - acyclic unary elimination shares path prefixes in a reverse-linked arena, retains distinct
   positional derivations, enforces explicit expansion budgets, and restores exact unary chains
   from emitted rule ordinals;
@@ -239,7 +255,9 @@ or CoreNLP compatibility. The dependency parser is the independent Eisner recurr
 not CoreNLP's transition-based neural dependency parser, and cannot load its models. The named NER
 surface emits CoreNLP-style flat token classes, but its caller-supplied constrained HMM is not the
 CoreNLP CRF/rule pipeline and cannot load Stanford models. No CoreNLP source code, model files, or
-generated model artifacts are included. No WordNet database or exception-list data is included.
+generated model artifacts are included. The named constituency surface is an independent
+treebank-induced CKY/unary-restoration pipeline and cannot load Stanford parser models. No WordNet
+database or exception-list data is included.
 
 ## Licensing
 
