@@ -6,5 +6,6 @@ import NlpTests.Core.FloatChart
 import NlpTests.Core.Interner
 import NlpTests.Core.UnionFind
 import NlpTests.Core.Dependency
+import NlpTests.Core.DependencyGraph
 import NlpTests.Core.Layer
 import NlpTests.Core.Doc
