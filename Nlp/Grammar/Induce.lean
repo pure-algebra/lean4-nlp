@@ -33,7 +33,7 @@ structure SyntheticKey where
   parent : NT
   left : NT
   right : NT
-deriving Repr, BEq, Hashable, DecidableEq, Inhabited
+deriving Repr, DecidableEq, Hashable, Inhabited
 
 /-- The source meaning of one dense parser nonterminal. -/
 inductive NTOrigin where
@@ -118,19 +118,46 @@ def mapWeights (f : K → L) (grammar : TreebankGrammar K) : TreebankGrammar L :
     (grammar.lexical.map fun rule ↦ { rule with w := f rule.w })
     grammar.start grammar.nNT grammar.origins grammar.realIndex grammar.syntheticIndex
 
+@[inline] private def addLhsCount (nNT : Nat) (totals : Array Nat)
+    (lhs : NT) (count : Count) : Array Nat :=
+  if lhs.toNat < nNT then
+    totals.modify lhs.toNat (fun total ↦ total + count.toNat)
+  else
+    totals
+
+private theorem addLhsCount_size (nNT : Nat) (totals : Array Nat)
+    (lhs : NT) (count : Count) :
+    (addLhsCount nNT totals lhs count).size = totals.size := by
+  unfold addLhsCount
+  split <;> simp
+
+private theorem foldl_addLhsCount_size (nNT : Nat) (items : Array α)
+    (lhs : α → NT) (count : α → Count) (totals : Array Nat) :
+    (items.foldl (fun current item ↦
+      addLhsCount nNT current (lhs item) (count item)) totals).size = totals.size := by
+  apply Array.foldl_induction (as := items)
+    (fun _ (current : Array Nat) ↦ current.size = totals.size) rfl
+  intro index current size
+  rw [addLhsCount_size, size]
+
 /-- Exact outgoing count totals, one slot per dense nonterminal. -/
-def lhsTotals (grammar : TreebankGrammar Count) : Array Nat := Id.run do
-  let mut totals := Array.replicate grammar.nNT 0
-  for rule in grammar.binary do
-    if rule.lhs.toNat < grammar.nNT then
-      totals := totals.modify rule.lhs.toNat (fun total ↦ total + rule.w.toNat)
-  for rule in grammar.unary do
-    if rule.lhs.toNat < grammar.nNT then
-      totals := totals.modify rule.lhs.toNat (fun total ↦ total + rule.w.toNat)
-  for rule in grammar.lexical do
-    if rule.lhs.toNat < grammar.nNT then
-      totals := totals.modify rule.lhs.toNat (fun total ↦ total + rule.w.toNat)
-  return totals
+def lhsTotals (grammar : TreebankGrammar Count) : Array Nat :=
+  let binary := grammar.binary.foldl
+    (fun totals rule ↦ addLhsCount grammar.nNT totals rule.lhs rule.w)
+    (Array.replicate grammar.nNT 0)
+  let unary := grammar.unary.foldl
+    (fun totals rule ↦ addLhsCount grammar.nNT totals rule.lhs rule.w)
+    binary
+  grammar.lexical.foldl
+    (fun totals rule ↦ addLhsCount grammar.nNT totals rule.lhs rule.w)
+    unary
+
+/-- The outgoing-total table has exactly one slot per dense nonterminal. -/
+@[simp] theorem lhsTotals_size (grammar : TreebankGrammar Count) :
+    grammar.lhsTotals.size = grammar.nNT := by
+  simp only [lhsTotals]
+  rw [foldl_addLhsCount_size, foldl_addLhsCount_size, foldl_addLhsCount_size]
+  exact Array.size_replicate
 
 @[inline] private def relativeFrequency (kind : MleRuleKind) (source : Nat)
     (totals : Array Nat) (lhs : NT) (count : Count) : Except MleError Prob := do
@@ -155,21 +182,15 @@ counts before requesting MLE.
 -/
 def mle (grammar : TreebankGrammar Count) : Except MleError (TreebankGrammar Prob) := do
   let totals := grammar.lhsTotals
-  let mut binary := Array.emptyWithCapacity grammar.binary.size
-  for source in [0:grammar.binary.size] do
-    let rule := grammar.binary[source]!
+  let binary ← grammar.binary.mapIdxM fun source rule ↦ do
     let weight ← relativeFrequency .binary source totals rule.lhs rule.w
-    binary := binary.push { rule with w := weight }
-  let mut unary := Array.emptyWithCapacity grammar.unary.size
-  for source in [0:grammar.unary.size] do
-    let rule := grammar.unary[source]!
+    return { rule with w := weight }
+  let unary ← grammar.unary.mapIdxM fun source rule ↦ do
     let weight ← relativeFrequency .unary source totals rule.lhs rule.w
-    unary := unary.push { rule with w := weight }
-  let mut lexical := Array.emptyWithCapacity grammar.lexical.size
-  for source in [0:grammar.lexical.size] do
-    let rule := grammar.lexical[source]!
+    return { rule with w := weight }
+  let lexical ← grammar.lexical.mapIdxM fun source rule ↦ do
     let weight ← relativeFrequency .lexical source totals rule.lhs rule.w
-    lexical := lexical.push { rule with w := weight }
+    return { rule with w := weight }
   return .mk binary unary lexical grammar.start grammar.nNT grammar.origins
     grammar.realIndex grammar.syntheticIndex
 
@@ -272,7 +293,7 @@ private structure BinaryKey where
   lhs : NT
   left : NT
   right : NT
-deriving BEq, Hashable
+deriving DecidableEq, Hashable
 
 private structure Builder where
   origins : Array NTOrigin := #[]
