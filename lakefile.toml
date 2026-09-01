@@ -23,3 +23,7 @@ root = "Bench.Parallel"
 [[lean_exe]]
 name = "tokenize-benchmark"
 root = "Bench.Tokenize"
+
+[[lean_exe]]
+name = "morphology-benchmark"
+root = "Bench.Morphology"
