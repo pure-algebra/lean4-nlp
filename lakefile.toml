@@ -12,3 +12,7 @@ roots = ["Nlp"]
 name = "NlpTests"
 srcDir = "."
 roots = ["NlpTests"]
+
+[[lean_exe]]
+name = "parallel-prototype"
+root = "ParallelPrototypeMain"
