@@ -19,11 +19,14 @@ Lean's standard library and is pinned to Lean 4.33.1.
 - semiring-generic CKY, compiled sparse/dense CKY, one-best extraction, and source-preserving
   Viterbi derivations;
 - linear-chain dynamic programming and a smoothed bigram HMM tagger;
+- source-preserving UTF-8 tokenization with source-byte spans, a persistent streaming cursor, exact
+  whitespace mode, configurable English/UD-style rules, and deterministic sentence splitting;
 - CoNLL-U and Penn Treebank readers, bracket/chunk/tagging metrics, and EVALB-compatible scoring;
-- cancellation-aware, order-preserving bounded parallel corpus traversal.
+- cancellation-aware, order-preserving bounded parallel corpus traversal with byte-weighted work
+  planning for skewed corpora.
 
-The broader CoreNLP surface—tokenization, morphology, NER, dependency parsing, model formats, and
-production CLI/package ergonomics—is still incomplete.
+The broader CoreNLP surface—full PTB tokenizer compatibility, morphology, NER, dependency parsing,
+model formats, and production CLI/package ergonomics—is still incomplete.
 
 ## Build and verify
 
@@ -33,10 +36,11 @@ Install [elan](https://github.com/leanprover/elan), then run:
 lake build NlpCore
 lake build NlpTests
 lake build parallel-benchmark
+lake build tokenize-benchmark
 ```
 
 `lake build` builds the public `NlpCore` library. `NlpTests` compiles the full theorem and
-regression suite. The benchmark is intentionally separate from the library.
+regression suite. Benchmarks are intentionally separate from the library.
 
 ## A checked functional example
 
@@ -56,11 +60,28 @@ def training : Array (Array (Tok × Nat)) :=
 -- #[0, 1]
 ```
 
+Tokenization is also available as a pure value-level API:
+
+```lean
+import Nlp
+
+open Nlp Nlp.Tokenize
+
+#eval
+  let doc := Tokenizer.default.process "Hi. Bye!"
+  (doc.forms, doc.sentEnd)
+-- (#["Hi", ".", "Bye", "!"], #[2, 4])
+```
+
 Pure kernels remain available under `Nlp.IO`, `Nlp.Parse`, `Nlp.Sequence`, and `Nlp.Eval`. For
 applications, `Nlp.NLP` is the preferred boundary: it provides typed failures, configuration,
 cancellation, model validation, effectful annotation, parsing, file operations, and bounded
 parallel traversal. `Nlp.Ann.lift` and `Nlp.NLP.annotatePure` expose the same pure annotators
-without moving effects into their hot path.
+without moving effects into their hot path. `Nlp.NLP.tokenizeText`, `processText`, `tokenizeTexts`,
+and `processTexts` provide checked effectful tokenization; corpus operations preserve order and
+schedule by UTF-8 byte weight. `Config.parallelMinGrain` is measured in items, while
+`Config.parallelMinWeight` is measured in caller-defined cost units; the tokenizer's
+`*WithMinBytes` APIs set the latter explicitly.
 
 ## Algorithm sources and implementation contributions
 
@@ -75,7 +96,13 @@ The established algorithms are credited to their primary specifications:
   [“A Tutorial on Hidden Markov Models”](https://doi.org/10.1109/5.18626), 1989;
 - CoNLL-U syntax: the [Universal Dependencies format specification](https://universaldependencies.org/format.html);
 - constituency scoring: Sekine and Collins' [EVALB](https://nlp.cs.nyu.edu/evalb/), including
-  the Brooks and Ellis updates.
+  the Brooks and Ellis updates;
+- tokenizer behavior and compatibility vocabulary: Stanford's
+  [tokenization](https://stanfordnlp.github.io/CoreNLP/tokenize.html) and
+  [sentence splitting](https://stanfordnlp.github.io/CoreNLP/ssplit.html) documentation;
+- Unicode decimal-number and whitespace classifications: the Unicode 17
+  [Derived General Category](https://www.unicode.org/Public/UCD/latest/ucd/extracted/DerivedGeneralCategory.txt)
+  and [property](https://www.unicode.org/Public/UCD/latest/ucd/PropList.txt) data files.
 
 Repository-specific implementation work is kept explicit in code and history:
 
@@ -84,10 +111,12 @@ Repository-specific implementation work is kept explicit in code and history:
 - width-major triangular charts use flat storage with checked layout theorems;
 - Viterbi backpointers preserve source production ordinals and deterministic tie-breaking;
 - imperative array kernels are related to functional folds by refinement theorems;
+- tokenizer spans use proof-carrying `String.Pos` endpoints, preserve exact source spelling, and
+  avoid converting the whole input to a character list;
 - typed score newtypes prevent accidental cross-domain arithmetic while retaining specialized hot
   paths;
-- the effectful scheduler balances coarse chunks, caps dedicated threads, suppresses nested
-  fan-out, observes cooperative cancellation, and preserves input/error order.
+- the effectful scheduler supports count- and weight-balanced chunks, caps dedicated threads,
+  suppresses nested fan-out, observes cooperative cancellation, and preserves input/error order.
 
 These are engineering and verification contributions in this repository, not claims to have
 invented CKY, Viterbi decoding, HMMs, semiring parsing, CoNLL-U, or EVALB.
@@ -107,7 +136,9 @@ kernel-reduced proof terms.
 
 This is an independent implementation inspired by classical NLP tasks and published algorithm
 specifications. It is not affiliated with Stanford University or the Stanford CoreNLP project.
-No CoreNLP source code, model files, or generated model artifacts are included.
+The tokenizer follows documented behavior where implemented, but does not claim exact PTBTokenizer
+or CoreNLP compatibility. No CoreNLP source code, model files, or generated model artifacts are
+included.
 
 ## Licensing
 
