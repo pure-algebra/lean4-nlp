@@ -46,19 +46,20 @@ def lemmatizeDoc (model : Model) (doc : Doc available)
 theorem lemmatizeDoc_wf (model : Model) (doc : Doc available) (wellFormed : doc.WF)
     (requirements : Sub [.tokens, .pos] available := by decide) :
     (model.lemmatizeDoc doc requirements).WF := by
-  rcases wellFormed with ⟨spans, pos, _priorLemma, ner, dep⟩
-  refine ⟨spans, ?_, ?_, ?_, ?_⟩
+  rcases wellFormed with ⟨spans, pos, _priorLemma, ner, dep, parse⟩
+  refine ⟨spans, ?_, ?_, ?_, ?_, ?_⟩
   · simpa [lemmatizeDoc, Doc.size] using pos
   · simp
   · simpa [lemmatizeDoc, Doc.size] using ner
   · simpa [lemmatizeDoc, Doc.size] using dep
+  · simpa [lemmatizeDoc, Doc.size] using parse
 
 /-- Pure lemmatization also preserves token and sentence semantics. -/
 theorem lemmatizeDoc_semanticWF (model : Model) (doc : Doc available)
     (semantic : doc.SemanticWF)
     (requirements : Sub [.tokens, .pos] available := by decide) :
     (model.lemmatizeDoc doc requirements).SemanticWF := by
-  refine ⟨model.lemmatizeDoc_wf doc semantic.1 requirements, ⟨?_, ⟨?_, ?_⟩⟩⟩
+  refine ⟨model.lemmatizeDoc_wf doc semantic.1 requirements, ?_, ?_, ?_, ?_⟩
   · intro tokens
     simpa [lemmatizeDoc, Doc.TokenWF, Doc.size] using semantic.2.1 (by simpa using tokens)
   · intro sentences
@@ -69,10 +70,18 @@ theorem lemmatizeDoc_semanticWF (model : Model) (doc : Doc available)
     · simpa [lemmatizeDoc, Doc.SentenceWF, Doc.size] using prior.2
   · intro dependency
     have priorDependency : Layer.dep ∈ available := by simpa using dependency
-    have prior := semantic.2.2.2 priorDependency
+    have prior := semantic.2.2.2.1 priorDependency
     constructor
     · simpa using prior.1
     · simpa [lemmatizeDoc, Doc.DependencyWF] using prior.2
+  · intro parse
+    have priorParse : Layer.parse ∈ available := by simpa using parse
+    have prior := semantic.2.2.2.2 priorParse
+    refine ⟨?_, ?_, ?_⟩
+    · simpa using prior.1
+    · simpa using prior.2.1
+    · change doc.ParseWF
+      exact prior.2.2
 
 /-- Functional, statically indexed English lemma annotator. -/
 def annotator (model : Model) : Ann Id [.tokens, .pos] [.lemma] :=

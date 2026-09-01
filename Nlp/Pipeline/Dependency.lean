@@ -23,24 +23,12 @@ inductive DocumentError where
   deriving Repr
 
 /-- Half-open flattened sentence ranges selected by a document's advertised layers. -/
-def documentRanges (doc : Doc available) : Array (Nat × Nat) := Id.run do
-  if Layer.sents ∈ available then
-    let mut ranges := Array.emptyWithCapacity doc.sentEnd.size
-    let mut start := 0
-    for stop in doc.sentEnd do
-      ranges := ranges.push (start, stop)
-      start := stop
-    return ranges
-  else if doc.size = 0 then
-    return #[]
-  else
-    return #[(0, doc.size)]
+def documentRanges (doc : Doc available) : Array (Nat × Nat) :=
+  doc.sentenceRanges
 
 /-- Cubic scheduling work implied by one checked document's sentence ranges. -/
 def documentWork (doc : Doc available) : Nat :=
-  (documentRanges doc).foldl (init := 0) fun total range =>
-    let length := range.2 - range.1
-    total + length * length * length
+  doc.sentenceCubicWork
 
 /-- Append one aligned local result, retaining its sentence ordinal in invariant failures. -/
 private def appendResult (sentence expected : Nat) (result : Eisner.NamedResult)

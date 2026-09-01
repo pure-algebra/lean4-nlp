@@ -33,7 +33,8 @@ example : ¬ malformed.WF := by decide
 example :
     Doc.checked malformed =
       .error (.invalidColumnSizes
-        { forms := 2, spans := 1, pos := 0, lemma := 0, ner := 0, head := 0, deprel := 0 }) := by
+        { forms := 2, spans := 1, pos := 0, lemma := 0, ner := 0, head := 0, deprel := 0,
+          parse := 0 }) := by
   rfl
 
 example : Doc.ofTokens "the dogs" spans forms = .ok tokenDoc := by rfl
@@ -42,7 +43,7 @@ example :
     semanticErrorOf (Doc.checkedSemantic malformed) =
       some (.structural (.invalidColumnSizes
         { forms := 2, spans := 1, pos := 0, lemma := 0, ner := 0, head := 0,
-          deprel := 0 })) := by
+          deprel := 0, parse := 0 })) := by
   native_decide
 
 private def tagged : Doc [.pos, .tokens] :=
@@ -172,6 +173,84 @@ private def sentenceDoc : Doc [.sents, .tokens] :=
     sentEnd := #[1, 2] }
 
 example : sentenceDoc.SemanticWF := by native_decide
+
+example : sentenceDoc.sentenceRanges = #[(0, 1), (1, 2)] := by native_decide
+
+example : sentenceDoc.sentenceCubicWork = 2 := by native_decide
+
+example : tokenDoc.sentenceRanges = #[(0, 2)] := by native_decide
+
+example : tokenDoc.sentenceCubicWork = 8 := by native_decide
+
+example : (Doc.empty "").sentenceRanges = #[] := by native_decide
+
+example : (Doc.empty "").sentenceCubicWork = 0 := by native_decide
+
+private def firstParse : NamedTree := .node "S" (.leaf "One.") #[]
+
+private def secondParse : NamedTree := .node "S" (.leaf "Two.") #[]
+
+private def parsedSentenceDoc : Doc [.parse, .sents, .tokens] :=
+  { text := sentenceDoc.text, spans := sentenceDoc.spans, forms := sentenceDoc.forms,
+    sentEnd := sentenceDoc.sentEnd, parse := #[firstParse, secondParse] }
+
+example : parsedSentenceDoc.SemanticWF := by native_decide
+
+example : Doc.checkedSemantic parsedSentenceDoc = .ok parsedSentenceDoc :=
+  (Doc.checkedSemantic_eq_ok_iff parsedSentenceDoc).2 (by native_decide)
+
+example : (parsedSentenceDoc.parseAt 1).yieldForms = #["Two."] := by native_decide
+
+private def parseCountMismatch : Doc [.parse, .sents, .tokens] :=
+  { text := sentenceDoc.text, spans := sentenceDoc.spans, forms := sentenceDoc.forms,
+    sentEnd := sentenceDoc.sentEnd, parse := #[firstParse] }
+
+example : ¬parseCountMismatch.WF := by native_decide
+
+example :
+    Doc.checked parseCountMismatch =
+      .error (.invalidColumnSizes
+        { forms := 2, spans := 2, pos := 0, lemma := 0, ner := 0, head := 0, deprel := 0,
+          parse := 1 }) := by
+  rfl
+
+private def emptyCategoryParseDoc : Doc [.parse, .sents, .tokens] :=
+  { text := sentenceDoc.text, spans := sentenceDoc.spans, forms := sentenceDoc.forms,
+    sentEnd := sentenceDoc.sentEnd,
+    parse := #[.node "S" (.node "" (.leaf "One.") #[]) #[], secondParse] }
+
+example : ¬emptyCategoryParseDoc.SemanticWF := by native_decide
+
+example :
+    semanticErrorOf (Doc.checkedSemantic emptyCategoryParseDoc) =
+      some (.emptyParseCategory 0) := by
+  native_decide
+
+private def yieldMismatchParseDoc : Doc [.parse, .sents, .tokens] :=
+  { text := sentenceDoc.text, spans := sentenceDoc.spans, forms := sentenceDoc.forms,
+    sentEnd := sentenceDoc.sentEnd,
+    parse := #[.node "S" (.leaf "Wrong.") #[], secondParse] }
+
+example : ¬yieldMismatchParseDoc.SemanticWF := by native_decide
+
+example :
+    semanticErrorOf (Doc.checkedSemantic yieldMismatchParseDoc) =
+      some (.parseYieldMismatch 0 #["One."] #["Wrong."]) := by
+  native_decide
+
+private def parseWithoutTokens : Doc [.parse] := { text := "" }
+
+example :
+    semanticErrorOf (Doc.checkedSemantic parseWithoutTokens) =
+      some .parseLayerRequiresTokens := by
+  native_decide
+
+private def parseWithoutSentences : Doc [.parse, .tokens] := { text := "" }
+
+example :
+    semanticErrorOf (Doc.checkedSemantic parseWithoutSentences) =
+      some .parseLayerRequiresSentences := by
+  native_decide
 
 private def dependencyDoc : Doc [.dep, .tokens] :=
   { tokenDoc with head := #[2, 0], deprel := #["det", "root"] }

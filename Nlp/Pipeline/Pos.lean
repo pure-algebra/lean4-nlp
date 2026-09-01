@@ -96,20 +96,21 @@ def tagDoc (tagger : PosTagger) (doc : Doc available)
 theorem tagDoc_wf (tagger : PosTagger) (doc : Doc available) (wellFormed : doc.WF)
     (requirements : Sub [.tokens] available := by decide) :
     (tagger.tagDoc doc requirements).WF := by
-  rcases wellFormed with ⟨spans, _priorPos, lemma, ner, dep⟩
-  refine ⟨spans, ?_, ?_, ?_, ?_⟩
+  rcases wellFormed with ⟨spans, _priorPos, lemma, ner, dep, parse⟩
+  refine ⟨spans, ?_, ?_, ?_, ?_, ?_⟩
   · intro _
     simpa only [tagDoc_size] using tagger.tagDoc_pos_size doc requirements
   · simpa [tagDoc, Doc.size] using lemma
   · simpa [tagDoc, Doc.size] using ner
   · simpa [tagDoc, Doc.size] using dep
+  · simpa [tagDoc, Doc.size] using parse
 
 /-- Pure POS tagging also preserves token and sentence semantics. -/
 theorem tagDoc_semanticWF (tagger : PosTagger) (doc : Doc available)
     (semantic : doc.SemanticWF)
     (requirements : Sub [.tokens] available := by decide) :
     (tagger.tagDoc doc requirements).SemanticWF := by
-  refine ⟨tagger.tagDoc_wf doc semantic.1 requirements, ⟨?_, ⟨?_, ?_⟩⟩⟩
+  refine ⟨tagger.tagDoc_wf doc semantic.1 requirements, ?_, ?_, ?_, ?_⟩
   · intro tokens
     simpa [tagDoc, Doc.TokenWF, Doc.size] using semantic.2.1 (by simpa using tokens)
   · intro sentences
@@ -120,10 +121,18 @@ theorem tagDoc_semanticWF (tagger : PosTagger) (doc : Doc available)
     · simpa [tagDoc, Doc.SentenceWF, Doc.size] using prior.2
   · intro dependency
     have priorDependency : Layer.dep ∈ available := by simpa using dependency
-    have prior := semantic.2.2.2 priorDependency
+    have prior := semantic.2.2.2.1 priorDependency
     constructor
     · simpa using prior.1
     · simpa [tagDoc, Doc.DependencyWF] using prior.2
+  · intro parse
+    have priorParse : Layer.parse ∈ available := by simpa using parse
+    have prior := semantic.2.2.2.2 priorParse
+    refine ⟨?_, ?_, ?_⟩
+    · simpa using prior.1
+    · simpa using prior.2.1
+    · change doc.ParseWF
+      exact prior.2.2
 
 /-- Functional, statically indexed POS annotator. -/
 def annotator (tagger : PosTagger) : Ann Id [.tokens] [.pos] :=

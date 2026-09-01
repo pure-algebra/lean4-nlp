@@ -3,6 +3,7 @@ import Nlp.Core.Data.Dependency
 import Nlp.Core.Data.Span
 import Nlp.Core.Extra
 import Nlp.Core.Layer
+import Nlp.Syntax.NamedTree
 
 /-!
 # Columnar annotated documents
@@ -29,6 +30,8 @@ structure Doc (ls : Layers) where
   ner : Array String := #[]
   head : Array Nat := #[]
   deprel : Array String := #[]
+  /-- One constituency tree per advertised sentence after the parse layer completes. -/
+  parse : Array NamedTree := #[]
   extra : Extra := ∅
 
 namespace Doc
@@ -36,18 +39,39 @@ namespace Doc
 /-- The number of token positions in a document. -/
 @[inline] def size (doc : Doc ls) : Nat := doc.forms.size
 
+/-- Half-open flattened sentence ranges selected by a document's advertised layers. -/
+def sentenceRanges (doc : Doc ls) : Array (Nat × Nat) := Id.run do
+  if Layer.sents ∈ ls then
+    let mut ranges := Array.emptyWithCapacity doc.sentEnd.size
+    let mut start := 0
+    for stop in doc.sentEnd do
+      ranges := ranges.push (start, stop)
+      start := stop
+    return ranges
+  else if doc.size = 0 then
+    return #[]
+  else
+    return #[(0, doc.size)]
+
+/-- Cubic scheduling work implied by a document's selected sentence ranges. -/
+def sentenceCubicWork (doc : Doc ls) : Nat :=
+  doc.sentenceRanges.foldl (init := 0) fun total range ↦
+    let length := range.2 - range.1
+    total + length * length * length
+
 /-- Column-size invariants for the layers represented by a document.
 
 Token forms and spans always align. A completed token-level layer has exactly one entry per token;
-dependency annotation has both a head and a relation entry per token. Sentence and parse layers
-have sentence-level cardinalities and are intentionally outside this first predicate.
+dependency annotation has both a head and a relation entry per token. A completed parse layer has
+exactly one tree per advertised sentence.
 -/
 def WF {ls : Layers} (doc : Doc ls) : Prop :=
   doc.spans.size = doc.size ∧
     (Layer.pos ∈ ls → doc.pos.size = doc.size) ∧
     (Layer.lemma ∈ ls → doc.lemma.size = doc.size) ∧
     (Layer.ner ∈ ls → doc.ner.size = doc.size) ∧
-    (Layer.dep ∈ ls → doc.head.size = doc.size ∧ doc.deprel.size = doc.size)
+    (Layer.dep ∈ ls → doc.head.size = doc.size ∧ doc.deprel.size = doc.size) ∧
+    (Layer.parse ∈ ls → doc.parse.size = doc.sentEnd.size)
 
 instance instDecidableWF {ls : Layers} (doc : Doc ls) : Decidable doc.WF := by
   unfold WF
@@ -201,12 +225,32 @@ instance instDecidableDependencyWF {ls : Layers} (doc : Doc ls) :
   unfold DependencyWF
   infer_instance
 
+/-- Inclusive token start of one sentence ordinal, defaulting conservatively outside the column. -/
+@[inline] private def sentenceStart (doc : Doc ls) (sentence : Nat) : Nat :=
+  if sentence = 0 then 0 else doc.sentEnd.getD (sentence - 1) 0
+
+/-- Token forms selected by one sentence ordinal's half-open flattened range. -/
+@[inline] private def sentenceForms (doc : Doc ls) (sentence : Nat) : Array String :=
+  doc.forms.extract (sentenceStart doc sentence) (doc.sentEnd.getD sentence doc.size)
+
+/-- Every constituency category is named and every tree yield equals its sentence forms exactly. -/
+def ParseWF {ls : Layers} (doc : Doc ls) : Prop :=
+  (∀ tree ∈ doc.parse, tree.categoriesNonempty = true) ∧
+    ∀ sentence, ∀ bound : sentence < doc.parse.size,
+      (doc.parse[sentence]'bound).yieldForms = sentenceForms doc sentence
+
+instance instDecidableParseWF {ls : Layers} (doc : Doc ls) : Decidable doc.ParseWF := by
+  unfold ParseWF
+  infer_instance
+
 /-- Full semantic boundary invariant layered on top of the compatible column-size invariant. -/
 def SemanticWF {ls : Layers} (doc : Doc ls) : Prop :=
   doc.WF ∧
     (Layer.tokens ∈ ls → doc.TokenWF) ∧
     (Layer.sents ∈ ls → Layer.tokens ∈ ls ∧ doc.SentenceWF) ∧
-    (Layer.dep ∈ ls → Layer.tokens ∈ ls ∧ doc.DependencyWF)
+    (Layer.dep ∈ ls → Layer.tokens ∈ ls ∧ doc.DependencyWF) ∧
+    (Layer.parse ∈ ls →
+      Layer.tokens ∈ ls ∧ Layer.sents ∈ ls ∧ doc.ParseWF)
 
 instance instDecidableSemanticWF {ls : Layers} (doc : Doc ls) :
     Decidable doc.SemanticWF := by
@@ -235,12 +279,27 @@ theorem semanticWF_sentence {ls : Layers} {doc : Doc ls} (semantic : doc.Semanti
 /-- A semantically valid dependency layer always carries its token layer. -/
 theorem semanticWF_tokens_of_dep {ls : Layers} {doc : Doc ls}
     (semantic : doc.SemanticWF) (dependency : Layer.dep ∈ ls) : Layer.tokens ∈ ls :=
-  (semantic.2.2.2 dependency).1
+  (semantic.2.2.2.1 dependency).1
 
 /-- Extract the sentence-aware dependency-tree invariant. -/
 theorem semanticWF_dependency {ls : Layers} {doc : Doc ls} (semantic : doc.SemanticWF)
     (dependency : Layer.dep ∈ ls) : doc.DependencyWF :=
-  (semantic.2.2.2 dependency).2
+  (semantic.2.2.2.1 dependency).2
+
+/-- A semantically valid parse layer always carries its token layer. -/
+theorem semanticWF_tokens_of_parse {ls : Layers} {doc : Doc ls}
+    (semantic : doc.SemanticWF) (parse : Layer.parse ∈ ls) : Layer.tokens ∈ ls :=
+  (semantic.2.2.2.2 parse).1
+
+/-- A semantically valid parse layer always carries its sentence layer. -/
+theorem semanticWF_sents_of_parse {ls : Layers} {doc : Doc ls}
+    (semantic : doc.SemanticWF) (parse : Layer.parse ∈ ls) : Layer.sents ∈ ls :=
+  (semantic.2.2.2.2 parse).2.1
+
+/-- Extract named constituency-tree invariants from a semantically valid parsed document. -/
+theorem semanticWF_parse {ls : Layers} {doc : Doc ls} (semantic : doc.SemanticWF)
+    (parse : Layer.parse ∈ ls) : doc.ParseWF :=
+  (semantic.2.2.2.2 parse).2.2
 
 /-- Every advertised token span is valid for the document's exact source string. -/
 theorem semanticWF_span {ls : Layers} {doc : Doc ls} (semantic : doc.SemanticWF)
@@ -257,6 +316,8 @@ structure ColumnSizes where
   ner : Nat
   head : Nat
   deprel : Nat
+  /-- Number of constituency trees supplied by the document. -/
+  parse : Nat
   deriving Repr, DecidableEq, Inhabited
 
 /-- A document failed boundary validation. -/
@@ -275,6 +336,8 @@ inductive SemanticError where
   | structural (cause : ValidationError)
   | sentenceLayerRequiresTokens
   | dependencyLayerRequiresTokens
+  | parseLayerRequiresTokens
+  | parseLayerRequiresSentences
   | emptyTokenForm (index : Nat)
   | emptyTokenSpan (index : Nat) (span : Span)
   | reversedTokenSpan (index : Nat) (span : Span)
@@ -289,6 +352,8 @@ inductive SemanticError where
   | finalSentenceEnd (expected found : Nat)
   | invalidDependencyTree (cause : Dependency.TreeError)
   | invalidDependencyDocument (cause : Dependency.DocumentTreeError)
+  | emptyParseCategory (sentence : Nat)
+  | parseYieldMismatch (sentence : Nat) (expected found : Array String)
   | inconsistentSemanticState (textBytes tokens sentenceEnds : Nat)
   deriving Repr, DecidableEq, Inhabited
 
@@ -300,6 +365,7 @@ inductive SemanticError where
   ner := doc.ner.size
   head := doc.head.size
   deprel := doc.deprel.size
+  parse := doc.parse.size
 
 /-- Validate a document at an input or model boundary without changing its runtime shape. -/
 def checked (doc : Doc ls) : Except ValidationError (Doc ls) :=
@@ -428,6 +494,36 @@ private def dependencyError? (doc : Doc ls) : Option SemanticError :=
     | .ok () => none
     | .error cause => some (.invalidDependencyTree cause)
 
+/-- First parse failures by diagnostic class, retained independently of sentence traversal. -/
+private structure ParseErrorScan where
+  emptyCategory : Option Nat
+  yieldMismatch : Option (Nat × Array String × Array String)
+
+/-- Scan parse trees once while preserving deterministic error-class priority. -/
+private def scanParseErrors (doc : Doc ls) : ParseErrorScan := Id.run do
+  let mut emptyCategory : Option Nat := none
+  let mut yieldMismatch : Option (Nat × Array String × Array String) := none
+  for sentence in [0:doc.parse.size] do
+    let tree := doc.parse[sentence]!
+    if emptyCategory.isNone && !tree.categoriesNonempty then
+      emptyCategory := some sentence
+    let expected := sentenceForms doc sentence
+    let found := tree.yieldForms
+    if yieldMismatch.isNone && found != expected then
+      yieldMismatch := some (sentence, expected, found)
+  return ⟨emptyCategory, yieldMismatch⟩
+
+/-- Select the stable parse diagnostic after structural and sentence validation succeeds. -/
+private def parseError? (doc : Doc ls) : Option SemanticError :=
+  let errors := scanParseErrors doc
+  match errors.emptyCategory with
+  | some sentence => some (.emptyParseCategory sentence)
+  | none =>
+      match errors.yieldMismatch with
+      | some (sentence, expected, found) =>
+          some (.parseYieldMismatch sentence expected found)
+      | none => none
+
 private def semanticError (doc : Doc ls) : SemanticError :=
   match checked doc with
   | .error cause => .structural cause
@@ -436,6 +532,10 @@ private def semanticError (doc : Doc ls) : SemanticError :=
       .sentenceLayerRequiresTokens
     else if Layer.dep ∈ ls ∧ Layer.tokens ∉ ls then
       .dependencyLayerRequiresTokens
+    else if Layer.parse ∈ ls ∧ Layer.tokens ∉ ls then
+      .parseLayerRequiresTokens
+    else if Layer.parse ∈ ls ∧ Layer.sents ∉ ls then
+      .parseLayerRequiresSentences
     else
       let tokenCause := if Layer.tokens ∈ ls then tokenError? doc else none
       match tokenCause with
@@ -446,10 +546,14 @@ private def semanticError (doc : Doc ls) : SemanticError :=
         | some cause => cause
         | none =>
           let dependencyCause := if Layer.dep ∈ ls then dependencyError? doc else none
-          dependencyCause.getD
-            (.inconsistentSemanticState doc.text.utf8ByteSize doc.size doc.sentEnd.size)
+          match dependencyCause with
+          | some cause => cause
+          | none =>
+            let parseCause := if Layer.parse ∈ ls then parseError? doc else none
+            parseCause.getD
+              (.inconsistentSemanticState doc.text.utf8ByteSize doc.size doc.sentEnd.size)
 
-/-- Validate all layer, token-span, and sentence-boundary semantics at an external boundary. -/
+/-- Validate layer, token, sentence, dependency, and parse semantics at an external boundary. -/
 def checkedSemantic (doc : Doc ls) : Except SemanticError (Doc ls) :=
   if doc.SemanticWF then .ok doc else .error (semanticError doc)
 
@@ -525,6 +629,11 @@ theorem empty_wf (text : String) : (empty text).WF := by simp [empty, WF, size]
 @[inline] def deprelAt (doc : Doc ls) (i : Nat)
     (_needsDep : Layer.dep ∈ ls := by decide) : String :=
   doc.deprel[i]!
+
+/-- Read a constituency tree only from a document whose parse layer is present. -/
+@[inline] def parseAt (doc : Doc ls) (i : Nat)
+    (_needsParse : Layer.parse ∈ ls := by decide) : NamedTree :=
+  doc.parse[i]!
 
 end Doc
 
