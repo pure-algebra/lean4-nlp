@@ -4,9 +4,10 @@ import Nlp.Core.Data.DependencyGraph
 # Bounded English enhanced dependencies
 
 This module implements a deliberately small, word-node-only subset of enhanced Universal
-Dependencies. It retains every basic-tree arc, lexicalizes selected modifier and coordination
-relations from direct marker children, and propagates a conjunct governor's incoming relation
-for one direct coordination level. The rule vocabulary follows the enhanced-syntax overview at
+Dependencies. It retains one primary arc per basic-tree word, replaces selected modifier and
+coordination labels with lexicalized relations from direct marker children, and propagates a
+conjunct governor's incoming relation for one direct coordination level. The rule vocabulary
+follows the enhanced-syntax overview at
 <https://universaldependencies.org/u/overview/enhanced-syntax.html>.
 
 The transformer does not implement outgoing argument sharing, controlled subjects, relative
@@ -18,17 +19,17 @@ namespace Nlp.Dependency.EnglishEnhanced
 
 /-- Independent enhancement switches and exact retained-output limits. -/
 structure Config where
-  /-- Append direct `case` markers to `nmod` and `obl` relations. -/
+  /-- Replace `nmod` and `obl` labels using direct `case` markers. -/
   lexicalizeNominals : Bool := true
-  /-- Append direct `mark` or `case` markers to `acl` and `advcl` relations. -/
+  /-- Replace `acl` and `advcl` labels using direct `mark` or `case` markers. -/
   lexicalizeClauses : Bool := true
-  /-- Append the selected direct `cc` marker to `conj` relations. -/
+  /-- Replace `conj` labels using the selected direct `cc` marker. -/
   lexicalizeConjunctions : Bool := true
   /-- Propagate a conjunct governor's incoming non-structural relation one direct level. -/
   propagateIncomingConj : Bool := true
   /-- Maximum number of derived enhancement candidates before graph construction. -/
   maxCandidates : Nat := 1_048_576
-  /-- Maximum number of canonical graph edges, including retained basic edges. -/
+  /-- Maximum number of canonical primary and propagated graph edges. -/
   maxEdges : Nat := 1_048_576
   /-- Maximum aggregate UTF-8 bytes in materialized lexicalized relation labels. -/
   maxLexicalBytes : Nat := 16_777_216
@@ -61,7 +62,7 @@ inductive Error where
   | rootRelationMismatch (dependent head : Nat) (relation : String)
   /-- Derived candidates exceed the exact caller-selected limit. -/
   | candidateBudget (required limit : Nat)
-  /-- Basic and derived canonical edges exceed the exact caller-selected limit. -/
+  /-- Primary and propagated canonical edges exceed the exact caller-selected limit. -/
   | edgeBudget (required limit : Nat)
   /-- Materialized lexicalized relation labels exceed the exact UTF-8 byte limit. -/
   | lexicalBudget (required limit : Nat)
@@ -73,11 +74,11 @@ inductive Error where
 
 /-- Exact public counts by source rule family. -/
 structure Counts where
-  /-- Basic-tree edges retained without rewriting. -/
+  /-- One primary edge position retained for every basic-tree word. -/
   basic : Nat
-  /-- Edges whose relation gained a lexical marker suffix. -/
+  /-- Primary edges whose basic relation was replaced by a lexicalized relation. -/
   lexicalized : Nat
-  /-- Incoming governor relations propagated to conjuncts. -/
+  /-- Additional incoming governor relations propagated to conjuncts. -/
   propagated : Nat
   deriving Repr, DecidableEq, Inhabited
 
@@ -87,9 +88,9 @@ namespace Counts
 @[inline] def candidates (counts : Counts) : Nat :=
   counts.lexicalized + counts.propagated
 
-/-- Exact number of canonical edges expected from this bounded transformer. -/
+/-- Exact primary-plus-propagated edge count expected from this bounded transformer. -/
 @[inline] def total (counts : Counts) : Nat :=
-  counts.basic + counts.candidates
+  counts.basic + counts.propagated
 
 end Counts
 
@@ -98,11 +99,11 @@ structure Result where
   private mk ::
   /-- Canonical word-node enhanced graph. -/
   graph : Graph String
-  /-- Counts of retained and derived edge families. -/
+  /-- Counts of primary positions, lexicalized replacements, and propagated edges. -/
   counts : Counts
   /-- Every selected basic-tree word appears exactly once as a graph node. -/
   nodeCount_eq : graph.nodeCount = counts.basic
-  /-- No generated candidate was lost or duplicated during canonical CSR construction. -/
+  /-- The graph has one primary edge per word plus every propagated incoming edge. -/
   edgeCount_eq : graph.edgeCount = counts.total
 
 /-- Compare a relation's universal prefix without allocating a split array. -/
@@ -415,18 +416,18 @@ private def arcPrecedes (left right : Arc String) : Bool :=
   | .gt => false
   | .eq => compare left.relation right.relation == .lt
 
-/-- Build one canonical incoming row from its basic, lexicalized, and propagated arcs. -/
+/-- Build one canonical row from its primary relation and optional propagated governor arc. -/
 private def buildRow (config : Config) (heads : Array Nat) (relations : Array String)
     (start dependent : Nat) (lexicalized : Array (Option String)) : Row String := Id.run do
   let global := globalIndex start dependent
   let basicHead := heads[global]!
   let basicRelation := relations[global]!
+  let (primaryRelation, primaryOrigin) :=
+    match lexicalized.getD (dependent - 1) none with
+    | some relation => (relation, Origin.enhanced)
+    | none => (basicRelation, Origin.basic)
   let mut incoming : Array (Arc String) :=
-    #[⟨graphHead basicHead, basicRelation, .basic⟩]
-  match lexicalized.getD (dependent - 1) none with
-  | some relation =>
-      incoming := incoming.push ⟨graphHead basicHead, relation, .enhanced⟩
-  | none => pure ()
+    #[⟨graphHead basicHead, primaryRelation, primaryOrigin⟩]
   if propagatesAt config heads relations start dependent then
     let governor := basicHead
     let governorGlobal := globalIndex start governor

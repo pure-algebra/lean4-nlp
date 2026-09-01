@@ -146,14 +146,12 @@ private def oracle (config : Config) (heads : Array Nat)
     let dependent := index + 1
     let basicHead := heads[index]!
     let basicRelation := relations[index]!
-    let basic : Arc String := ⟨oracleHead basicHead, basicRelation, .basic⟩
     if (labels[index]!).isSome then
       lexicalized := lexicalized + 1
-    let arcs :=
+    let primary : Arc String :=
       match labels[index]! with
-      | none => [basic]
-      | some relation =>
-          [basic, ⟨oracleHead basicHead, relation, .enhanced⟩]
+      | none => ⟨oracleHead basicHead, basicRelation, .basic⟩
+      | some relation => ⟨oracleHead basicHead, relation, .enhanced⟩
     let propagates := oraclePropagates config heads relations dependent
     if propagates then
       propagated := propagated + 1
@@ -163,9 +161,9 @@ private def oracle (config : Config) (heads : Array Nat)
         let propagatedHead := heads[governor - 1]!
         let originalRelation := oracleRelationAt relations governor
         let propagatedRelation := (labels[governor - 1]!).getD originalRelation
-        arcs ++ [⟨oracleHead propagatedHead, propagatedRelation, .enhanced⟩]
+        [primary, ⟨oracleHead propagatedHead, propagatedRelation, .enhanced⟩]
       else
-        arcs
+        [primary]
     rows := rows.push ⟨.word dependent, oracleSortArcs arcs⟩
   return ⟨rows, ⟨heads.size, lexicalized, propagated⟩⟩
 
@@ -201,8 +199,8 @@ private def nominalFixedGolden : Bool :=
   match enhanceArrays? heads relations forms lemmas pos with
   | .error _ => false
   | .ok result =>
-      decide (result.counts = ⟨5, 1, 0⟩) && result.graph.edgeCount == 6 &&
-        hasArc result 2 (.word 1) "nmod" .basic &&
+      decide (result.counts = ⟨5, 1, 0⟩) && result.graph.edgeCount == 5 &&
+        !hasArc result 2 (.word 1) "nmod" .basic &&
         hasArc result 2 (.word 1) "nmod:in_front_of" .enhanced
 
 #guard nominalFixedGolden
@@ -217,7 +215,8 @@ private def clauseFixedGolden : Bool :=
   match enhanceArrays? heads relations forms lemmas pos with
   | .error _ => false
   | .ok result =>
-      decide (result.counts = ⟨5, 1, 0⟩) &&
+      decide (result.counts = ⟨5, 1, 0⟩) && result.graph.edgeCount == 5 &&
+        !hasArc result 2 (.word 1) "advcl" .basic &&
         hasArc result 2 (.word 1) "advcl:as_opposed_to" .enhanced &&
         !hasArc result 2 (.word 1) "advcl:as_oppose_to" .enhanced
 
@@ -232,8 +231,8 @@ private def computedLabelPropagationGolden : Bool :=
   match enhanceArrays? heads relations forms lemmas pos with
   | .error _ => false
   | .ok result =>
-      decide (result.counts = ⟨5, 2, 1⟩) && result.graph.edgeCount == 8 &&
-        hasArc result 4 (.word 2) "conj" .basic &&
+      decide (result.counts = ⟨5, 2, 1⟩) && result.graph.edgeCount == 6 &&
+        !hasArc result 4 (.word 2) "conj" .basic &&
         hasArc result 4 (.word 2) "conj:and" .enhanced &&
         hasArc result 4 (.word 1) "obl:in" .enhanced
 
@@ -248,9 +247,10 @@ private def rootPropagationGolden : Bool :=
   match enhanceArrays? heads relations forms lemmas pos with
   | .error _ => false
   | .ok result =>
-      decide (result.counts = ⟨4, 1, 1⟩) &&
+      decide (result.counts = ⟨4, 1, 1⟩) && result.graph.edgeCount == 5 &&
         hasArc result 4 .root "root" .enhanced &&
-        hasArc result 4 (.word 2) "conj:and" .enhanced
+        hasArc result 4 (.word 2) "conj:and" .enhanced &&
+        !hasArc result 4 (.word 2) "conj" .basic
 
 #guard rootPropagationGolden
 
@@ -416,11 +416,11 @@ private def budgetBoundaries : Bool :=
   let relations := #["root", "obl", "case", "conj", "cc"]
   let lemmas := #["Met", "Home", "In", "Office", "And"]
   let (forms, pos) := fixtureColumns heads.size
-  let exact : Config := { maxCandidates := 3, maxEdges := 8, maxLexicalBytes := 14 }
-  let candidateShort : Config := { maxCandidates := 2, maxEdges := 8 }
-  let edgeShort : Config := { maxCandidates := 3, maxEdges := 7 }
+  let exact : Config := { maxCandidates := 3, maxEdges := 6, maxLexicalBytes := 14 }
+  let candidateShort : Config := { maxCandidates := 2, maxEdges := 6 }
+  let edgeShort : Config := { maxCandidates := 3, maxEdges := 5 }
   let lexicalShort : Config :=
-    { maxCandidates := 3, maxEdges := 8, maxLexicalBytes := 13 }
+    { maxCandidates := 3, maxEdges := 6, maxLexicalBytes := 13 }
   let exactOk := (enhanceArraysWith? exact heads relations forms lemmas pos).isOk
   let candidateError :=
     match enhanceArraysWith? candidateShort heads relations forms lemmas pos with
@@ -428,7 +428,7 @@ private def budgetBoundaries : Bool :=
     | _ => false
   let edgeError :=
     match enhanceArraysWith? edgeShort heads relations forms lemmas pos with
-    | .error (.edgeBudget 8 7) => true
+    | .error (.edgeBudget 6 5) => true
     | _ => false
   let lexicalError :=
     match enhanceArraysWith? lexicalShort heads relations forms lemmas pos with
@@ -444,8 +444,8 @@ private def unicodeLexicalBudget : Bool :=
   let relations := #["root", "nmod", "case"]
   let lemmas := #["root", "thing", "é"]
   let (forms, pos) := fixtureColumns heads.size
-  let exact : Config := { maxCandidates := 1, maxEdges := 4, maxLexicalBytes := 7 }
-  let short : Config := { maxCandidates := 1, maxEdges := 4, maxLexicalBytes := 6 }
+  let exact : Config := { maxCandidates := 1, maxEdges := 3, maxLexicalBytes := 7 }
+  let short : Config := { maxCandidates := 1, maxEdges := 3, maxLexicalBytes := 6 }
   let exactOk :=
     match enhanceArraysWith? exact heads relations forms lemmas pos with
     | .ok result => hasArc result 2 (.word 1) "nmod:é" .enhanced

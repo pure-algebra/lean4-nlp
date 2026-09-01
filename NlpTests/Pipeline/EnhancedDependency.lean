@@ -52,8 +52,8 @@ private def sameOutput (left right : EnglishEnhanced.Document available) : Bool 
       | some first, some second =>
           first.graph.nodes == #[.word 1, .word 2] && first.graph.edgeCount == 2 &&
             second.graph.nodes == #[.word 1, .word 2, .word 3] &&
-            second.graph.heads == #[.root, .word 3, .word 1, .word 1] &&
-            second.graph.relations == #["root", "case", "nmod", "nmod:in"] &&
+            second.graph.heads == #[.root, .word 3, .word 1] &&
+            second.graph.relations == #["root", "case", "nmod:in"] &&
             decide (second.counts = ⟨3, 1, 0⟩)
       | _, _ => false
 
@@ -64,21 +64,21 @@ example (document : EnglishEnhanced.Document available) :
 
 /- Exact pure candidate and edge limits accept equality. -/
 #guard
-  let exact : EnglishEnhanced.Config := { maxCandidates := 1, maxEdges := 4 }
+  let exact : EnglishEnhanced.Config := { maxCandidates := 1, maxEdges := 3 }
   (EnglishEnhanced.enhanceDocumentWith? exact multiSentence).isOk
 
 /- A one-short candidate limit retains the second sentence and source range. -/
 #guard
-  let short : EnglishEnhanced.Config := { maxCandidates := 0, maxEdges := 4 }
+  let short : EnglishEnhanced.Config := { maxCandidates := 0, maxEdges := 3 }
   match EnglishEnhanced.enhanceDocumentWith? short multiSentence with
   | .error (.sentence 1 2 5 (.candidateBudget 1 0)) => true
   | _ => false
 
 /- A one-short edge limit retains the exact total needed by the second sentence. -/
 #guard
-  let short : EnglishEnhanced.Config := { maxCandidates := 1, maxEdges := 3 }
+  let short : EnglishEnhanced.Config := { maxCandidates := 1, maxEdges := 2 }
   match EnglishEnhanced.enhanceDocumentWith? short multiSentence with
-  | .error (.sentence 1 2 5 (.edgeBudget 4 3)) => true
+  | .error (.sentence 1 2 5 (.edgeBudget 3 2)) => true
   | _ => false
 
 /- Pure malformed input is rejected at the single semantic validation boundary. -/
@@ -101,19 +101,19 @@ def testEffectParity : IO Unit := do
 
 /-- Runtime clamps preserve exact equality and map one-short limits to typed skips. -/
 def testRuntimeLimits : IO Unit := do
-  match ← NLP.runIO { maxGraphCandidates := 1, maxGraphEdges := 4 } <|
+  match ← NLP.runIO { maxGraphCandidates := 1, maxGraphEdges := 3 } <|
       NLP.enhanceDependencies multiSentence with
   | .ok (.ok document) =>
       unless document.results.size == 2 do
         throw <| IO.userError "exact enhanced graph limits changed the sentence count"
   | _ => throw <| IO.userError "exact enhanced graph limits were rejected"
-  match ← NLP.runIO { maxGraphCandidates := 0, maxGraphEdges := 4 } <|
+  match ← NLP.runIO { maxGraphCandidates := 0, maxGraphEdges := 3 } <|
       NLP.enhanceDependencies multiSentence with
   | .ok (.skipped (.candidateLimit 1 0)) => pure ()
   | _ => throw <| IO.userError "candidate clamp lost its exact one-short boundary"
-  match ← NLP.runIO { maxGraphCandidates := 1, maxGraphEdges := 3 } <|
+  match ← NLP.runIO { maxGraphCandidates := 1, maxGraphEdges := 2 } <|
       NLP.enhanceDependencies multiSentence with
-  | .ok (.skipped (.workLimit 4 3)) => pure ()
+  | .ok (.skipped (.workLimit 3 2)) => pure ()
   | _ => throw <| IO.userError "edge clamp lost its exact one-short boundary"
   let lexicalRequired ←
     match EnglishEnhanced.enhanceDocumentWith?
