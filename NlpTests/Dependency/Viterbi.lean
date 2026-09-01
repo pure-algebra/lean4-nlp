@@ -94,6 +94,111 @@ private def deterministic : Bool :=
 
 #guard deterministic
 
+/-- Test-only recurrence retaining the public triangular index at every access. -/
+private structure SlowChart where
+  score : FloatArray
+  split : Array UInt32
+  root : UInt32
+  rootCost : Float
+
+/-- Reference implementation for exact optimized-chart regression checks. -/
+private def slowViterbi (arcs : ArcScores) : SlowChart := Id.run do
+  let n := arcs.n
+  let entries := Eisner.chartEntryCount n
+  let mut score := FloatArray.replicate entries inf
+  let mut split := Array.replicate entries 0
+  for token in [0:n] do
+    score := score.set! (Eisner.itemIndex n token token .completeLeft) 0.0
+    score := score.set! (Eisner.itemIndex n token token .completeRight) 0.0
+  for width in [2:n + 1] do
+    for i in [0:n + 1 - width] do
+      let j := i + width - 1
+      let mut common := inf
+      let mut incompleteSplit := i
+      for middle in [i:j] do
+        let candidate :=
+          score.getD (Eisner.itemIndex n i middle .completeRight) inf +
+            score.getD (Eisner.itemIndex n (middle + 1) j .completeLeft) inf
+        if candidate < common then
+          common := candidate
+          incompleteSplit := middle
+      let leftIncomplete := Eisner.itemIndex n i j .incompleteLeft
+      let rightIncomplete := Eisner.itemIndex n i j .incompleteRight
+      score := score.set! leftIncomplete (common + arcs.costAt (j + 1) (i + 1))
+      score := score.set! rightIncomplete (common + arcs.costAt (i + 1) (j + 1))
+      split := split.set! leftIncomplete (UInt32.ofNat incompleteSplit)
+      split := split.set! rightIncomplete (UInt32.ofNat incompleteSplit)
+      let mut completeLeft := inf
+      let mut leftSplit := i
+      for middle in [i:j] do
+        let candidate :=
+          score.getD (Eisner.itemIndex n i middle .completeLeft) inf +
+            score.getD (Eisner.itemIndex n middle j .incompleteLeft) inf
+        if candidate < completeLeft then
+          completeLeft := candidate
+          leftSplit := middle
+      let leftComplete := Eisner.itemIndex n i j .completeLeft
+      score := score.set! leftComplete completeLeft
+      split := split.set! leftComplete (UInt32.ofNat leftSplit)
+      let mut completeRight := inf
+      let mut rightSplit := i + 1
+      for middle in [i + 1:j + 1] do
+        let candidate :=
+          score.getD (Eisner.itemIndex n i middle .incompleteRight) inf +
+            score.getD (Eisner.itemIndex n middle j .completeRight) inf
+        if candidate < completeRight then
+          completeRight := candidate
+          rightSplit := middle
+      let rightComplete := Eisner.itemIndex n i j .completeRight
+      score := score.set! rightComplete completeRight
+      split := split.set! rightComplete (UInt32.ofNat rightSplit)
+  let mut root := 0
+  let mut rootCost := inf
+  for candidateRoot in [0:n] do
+    let candidate :=
+      (score.getD (Eisner.itemIndex n 0 candidateRoot .completeLeft) inf +
+        score.getD (Eisner.itemIndex n candidateRoot (n - 1) .completeRight) inf) +
+        arcs.costAt 0 (candidateRoot + 1)
+    if candidate < rootCost then
+      root := candidateRoot
+      rootCost := candidate
+  return ⟨score, split, UInt32.ofNat root, rootCost⟩
+
+/-- Compare unboxed chart values by exact IEEE-754 representation. -/
+private def sameScoreBits (left right : FloatArray) : Bool := Id.run do
+  unless left.size == right.size do
+    return false
+  for index in [0:left.size] do
+    unless (left.getD index inf).toBits == (right.getD index inf).toBits do
+      return false
+  return true
+
+/-- Optimized width-band indices preserve every reference value and backpointer. -/
+private def exactChartParity (n seed : Nat) : Bool :=
+  match ArcScores.compileScorer n labels 0 fun head dependent relation =>
+      Float.ofNat ((head * 17 + dependent * 11 + relation * 5 + seed) % 13) / 4.0 with
+  | .error _ => false
+  | .ok arcs =>
+      let reference := slowViterbi arcs
+      let optimized := Eisner.viterbi arcs
+      sameScoreBits reference.score optimized.score && reference.split == optimized.split &&
+        reference.root == optimized.root &&
+          reference.rootCost.toBits == optimized.rootCost.toBits
+
+#guard (List.range 9).all fun n ↦ exactChartParity n (n * 7 + 3)
+
+-- Forbidden arcs and exact ties retain the reference chart bit for bit.
+#guard
+  match ArcScores.compileScorer 6 #["root", "dep"] 0 fun head _ _ =>
+      if head = 0 then 0.0 else inf with
+  | .error _ => false
+  | .ok arcs =>
+      let reference := slowViterbi arcs
+      let optimized := Eisner.viterbi arcs
+      sameScoreBits reference.score optimized.score && reference.split == optimized.split &&
+        reference.root == optimized.root &&
+          reference.rootCost.toBits == optimized.rootCost.toBits
+
 private def genericValueParity (n seed : Nat) : Bool :=
   match ArcScores.compileScorer n #["root", "dep", "obj"] 0
       (fun head dependent relation =>

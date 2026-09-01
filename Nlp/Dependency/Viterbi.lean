@@ -69,6 +69,24 @@ structure NamedResult where
 @[inline] def itemIndex (n i j : Nat) (item : Item) : Nat :=
   flatIndex n i j item
 
+/-- Precompute one scalar offset for every inclusive span width. -/
+private def scalarBandBases (n : Nat) : Array Nat :=
+  Array.ofFn (n := n + 1) fun width ↦ ChartLayout.triOff n width.val * itemCount
+
+/-- Index one item through precomputed width-band arithmetic. -/
+@[inline] private def bandItemIndex (bases : Array Nat) (i j : Nat) (item : Item) : Nat :=
+  bases.getD (j - i + 1) 0 + i * itemCount + item.offset
+
+/-- Precomputed indexing is exactly the public width-major chart layout on valid spans. -/
+private theorem bandItemIndex_eq_itemIndex (n i j : Nat) (item : Item)
+    (ordered : i ≤ j) (inBounds : j < n) :
+    bandItemIndex (scalarBandBases n) i j item = itemIndex n i j item := by
+  have widthBounds : j - i + 1 < n + 1 := by omega
+  have widthEq : j + 1 - i = j - i + 1 := by omega
+  simp [bandItemIndex, scalarBandBases, itemIndex, flatIndex, ChartLayout.cidx,
+    ChartLayout.tri, Array.getD_eq_getD_getElem?, widthBounds, widthEq,
+    itemCount, Nat.add_mul, Nat.add_assoc]
+
 /-- Conservatively read a chart item, returning infinity for malformed storage. -/
 @[inline] def VitChart.getCost (chart : VitChart) (i j : Nat) (item : Item) : Float :=
   if i ≤ j && j < chart.n then
@@ -80,17 +98,6 @@ structure NamedResult where
 @[inline] def VitChart.getSplit (chart : VitChart) (i j : Nat) (item : Item) : Nat :=
   chart.split.getD (itemIndex chart.n i j item) 0 |>.toNat
 
-/-- Compute an exact-tie, lower-split argmin over a half-open split range. -/
-private def bestSplit (first stop : Nat) (candidate : Nat → Float) : Float × Nat := Id.run do
-  let mut best := inf
-  let mut split := first
-  for current in [first:stop] do
-    let value := candidate current
-    if value < best then
-      best := value
-      split := current
-  return (best, split)
-
 /--
 Run single-root labeled Eisner inference over precompiled arc scores.
 
@@ -101,43 +108,63 @@ treated as unavailable rather than being returned with unverifiable provenance.
 def viterbi (arcs : ArcScores) : VitChart := Id.run do
   let n := arcs.n
   let entries := chartEntryCount n
+  let bandBases := scalarBandBases n
   let mut score := FloatArray.replicate entries inf
   let mut split := Array.replicate entries 0
   for token in [0:n] do
-    score := score.set! (itemIndex n token token .completeLeft) 0.0
-    score := score.set! (itemIndex n token token .completeRight) 0.0
+    score := score.set! (bandItemIndex bandBases token token .completeLeft) 0.0
+    score := score.set! (bandItemIndex bandBases token token .completeRight) 0.0
   for width in [2:n + 1] do
     for i in [0:n + 1 - width] do
       let j := i + width - 1
-      let (common, incompleteSplit) := bestSplit i j fun middle =>
-        score.getD (itemIndex n i middle .completeRight) inf +
-          score.getD (itemIndex n (middle + 1) j .completeLeft) inf
+      let parentBase := bandBases.getD width 0 + i * itemCount
+      let mut common := inf
+      let mut incompleteSplit := i
+      for middle in [i:j] do
+        let candidate :=
+          score.getD (bandItemIndex bandBases i middle .completeRight) inf +
+            score.getD (bandItemIndex bandBases (middle + 1) j .completeLeft) inf
+        if candidate < common then
+          common := candidate
+          incompleteSplit := middle
       let leftCost := common + arcs.costAt (j + 1) (i + 1)
       let rightCost := common + arcs.costAt (i + 1) (j + 1)
-      let leftIncomplete := itemIndex n i j .incompleteLeft
-      let rightIncomplete := itemIndex n i j .incompleteRight
+      let leftIncomplete := parentBase + Item.incompleteLeft.offset
+      let rightIncomplete := parentBase + Item.incompleteRight.offset
       score := score.set! leftIncomplete leftCost
       score := score.set! rightIncomplete rightCost
       split := split.set! leftIncomplete (UInt32.ofNat incompleteSplit)
       split := split.set! rightIncomplete (UInt32.ofNat incompleteSplit)
-      let (completeLeft, leftSplit) := bestSplit i j fun middle =>
-        score.getD (itemIndex n i middle .completeLeft) inf +
-          score.getD (itemIndex n middle j .incompleteLeft) inf
-      let leftComplete := itemIndex n i j .completeLeft
+      let mut completeLeft := inf
+      let mut leftSplit := i
+      for middle in [i:j] do
+        let candidate :=
+          score.getD (bandItemIndex bandBases i middle .completeLeft) inf +
+            score.getD (bandItemIndex bandBases middle j .incompleteLeft) inf
+        if candidate < completeLeft then
+          completeLeft := candidate
+          leftSplit := middle
+      let leftComplete := parentBase + Item.completeLeft.offset
       score := score.set! leftComplete completeLeft
       split := split.set! leftComplete (UInt32.ofNat leftSplit)
-      let (completeRight, rightSplit) := bestSplit (i + 1) (j + 1) fun middle =>
-        score.getD (itemIndex n i middle .incompleteRight) inf +
-          score.getD (itemIndex n middle j .completeRight) inf
-      let rightComplete := itemIndex n i j .completeRight
+      let mut completeRight := inf
+      let mut rightSplit := i + 1
+      for middle in [i + 1:j + 1] do
+        let candidate :=
+          score.getD (bandItemIndex bandBases i middle .incompleteRight) inf +
+            score.getD (bandItemIndex bandBases middle j .completeRight) inf
+        if candidate < completeRight then
+          completeRight := candidate
+          rightSplit := middle
+      let rightComplete := parentBase + Item.completeRight.offset
       score := score.set! rightComplete completeRight
       split := split.set! rightComplete (UInt32.ofNat rightSplit)
   let mut root := 0
   let mut rootCost := inf
   for candidateRoot in [0:n] do
     let candidate :=
-      (score.getD (itemIndex n 0 candidateRoot .completeLeft) inf +
-        score.getD (itemIndex n candidateRoot (n - 1) .completeRight) inf) +
+      (score.getD (bandItemIndex bandBases 0 candidateRoot .completeLeft) inf +
+        score.getD (bandItemIndex bandBases candidateRoot (n - 1) .completeRight) inf) +
         arcs.costAt 0 (candidateRoot + 1)
     if candidate < rootCost then
       root := candidateRoot
