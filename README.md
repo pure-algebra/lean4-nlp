@@ -17,7 +17,7 @@ Lean's standard library and is pinned to Lean 4.33.1.
 - CFG/CNF structures, lossless tree binarization, dense treebank induction, bounded acyclic unary
   elimination with exact rule provenance, and checked grammar compilation;
 - semiring-generic CKY, compiled sparse/dense CKY, one-best extraction, and source-preserving
-  Viterbi derivations;
+  Viterbi derivations with adaptive pair indexing and exact unary-tree restoration;
 - linear-chain dynamic programming, a smoothed bigram HMM, and a validated named POS tagger with
   exact vocabulary lookup, reserved OOV handling, and sentence-boundary resets;
 - source-preserving UTF-8 tokenization with source-byte spans, a persistent streaming cursor, exact
@@ -44,6 +44,7 @@ lake build tokenize-benchmark
 lake build morphology-benchmark
 lake build pos-benchmark
 lake build unary-benchmark
+lake build compiled-viterbi-benchmark
 ```
 
 `lake build` builds the public `NlpCore` library. `NlpTests` compiles the full theorem and
@@ -91,7 +92,9 @@ without moving effects into their hot path. `Nlp.NLP.tokenizeText`, `processText
 and `processTexts` provide checked effectful tokenization; corpus operations preserve order and
 schedule by UTF-8 byte weight. `Config.parallelMinGrain` is measured in items, while
 `Config.parallelMinWeight` is measured in caller-defined cost units; the tokenizer's
-`*WithMinBytes` APIs set the latter explicitly. English morphology is available functionally via
+`*WithMinBytes` APIs set the latter explicitly. Policy-aware parsing also caps dense allocation
+through `Config.maxChartEntries`, independently of sentence length. English morphology is
+available functionally via
 `Morphology.Model.analyses`, `generate`, `lemmaOrSelf`, and `annotator`; `NLP.lemmatize` and
 `lemmatizeMany` add checked cancellation-aware application and token-weighted corpus traversal.
 Named POS tagging is available through `PosTagger.compile`, `estimate`, `tagForms`, and `annotator`;
@@ -102,6 +105,12 @@ one HMM sequence. `English.analyzeText` is the pure tokenize/split/POS/lemma pat
 path with one semantic validation scan per input. Models remain caller-supplied: the repository
 bundles neither a pretrained tagger nor a morphology dictionary, and lookup is exact and
 case-sensitive.
+
+Unary-aware one-best parsing is functional through `UnaryViterbiModel.compile` and `parse?`.
+`NLP.compileUnaryViterbiModel`, `parseUnaryTree`, and `parseUnaryTrees` add typed model failures,
+cancellation, sentence-length policy, and ordered bounded batches. The adaptive Viterbi compiler
+uses a compact sparse pair index for large nonterminal spaces while preserving exact emitted rule
+ordinals for restoration.
 
 The morphology model exposes ambiguity rather than hiding it, while `lemmaOrSelf` provides the
 conservative single-column policy used by the document annotator:
