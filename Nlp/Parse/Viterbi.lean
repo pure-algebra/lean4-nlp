@@ -82,17 +82,23 @@ end Derivation
   let stop := min rawStop capacity
   if first ≤ stop then some (first, stop) else none
 
-/--
-Sparse, values-only Viterbi CKY with a parallel argmax chart.
+/-- Length of a normalized half-open token range. -/
+@[inline] def rangeLength (words : Array Tok) (start stop : Nat) : Nat :=
+  let upper := min stop words.size
+  upper - min start upper
 
-An index produced by `CNF.index` preserves score semantics.  Freely constructed malformed indexes
-are read conservatively: invalid buckets, source mappings, and rules contribute nothing rather
-than causing an out-of-bounds panic.  Bit-level agreement with `ckyNaiveGoal` is claimed only for
-the canonical `Vit` domain documented in this module header.
+/--
+Run sparse, values-only Viterbi CKY over a normalized half-open token range.
+
+The chart uses coordinates local to the selected range. Tokens are read directly from the source
+array at the normalized lower bound, without allocating a slice.
 -/
-def ckyVit (indexed : IndexedCNF Vit) (words : Array Tok) : VitChart := Id.run do
+def ckyVitRange (indexed : IndexedCNF Vit) (words : Array Tok)
+    (start stop : Nat) : VitChart := Id.run do
+  let upper := min stop words.size
+  let lower := min start upper
+  let n := rangeLength words start stop
   let grammar := indexed.grammar
-  let n := words.size
   let nCells := Chart.cellCount n
   let entries := nCells * grammar.nNT
   let mut score : Array Vit := Array.replicate entries 0
@@ -102,9 +108,10 @@ def ckyVit (indexed : IndexedCNF Vit) (words : Array Tok) : VitChart := Id.run d
   for i in [0:n] do
     let cell := Chart.tri n i (i + 1)
     let base := cell * grammar.nNT
+    let token := words.getD (lower + i) 0
     for ruleIndex in [0:grammar.lex.size] do
       let rule := grammar.lex[ruleIndex]!
-      if rule.tok == words[i]! && rule.lhs.toNat < grammar.nNT &&
+      if rule.tok == token && rule.lhs.toNat < grammar.nNT &&
           ruleIndex < UInt32.size then
         let target := base + rule.lhs.toNat
         if shouldReplace rule.w score[target]! 0 ruleIndex back[target]! then
@@ -132,8 +139,8 @@ def ckyVit (indexed : IndexedCNF Vit) (words : Array Tok) : VitChart := Id.run d
             for rightNt in nonzero[rightCell]! do
               let right := score[rightBase + rightNt]!
               let key := IndexedCNF.pairKey grammar.nNT leftNt rightNt
-              if let some (first, stop) := bucketBounds? indexed key then
-                for bucketIndex in [first:stop] do
+              if let some (first, bucketStop) := bucketBounds? indexed key then
+                for bucketIndex in [first:bucketStop] do
                   if let some indexedRule := indexed.binSorted[bucketIndex]? then
                     if let some sourceIndex := indexed.binSource[bucketIndex]? then
                       if sourceIndex < UInt32.size then
@@ -155,13 +162,29 @@ def ckyVit (indexed : IndexedCNF Vit) (words : Array Tok) : VitChart := Id.run d
       nonzero := nonzero.set! cell present
   return ⟨score, back⟩
 
-private def extractAux (grammar : CNF Vit) (words : Array Tok) (chart : VitChart) :
+/--
+Sparse, values-only Viterbi CKY with a parallel argmax chart.
+
+An index produced by `CNF.index` preserves score semantics.  Freely constructed malformed indexes
+are read conservatively: invalid buckets, source mappings, and rules contribute nothing rather
+than causing an out-of-bounds panic.  Bit-level agreement with `ckyNaiveGoal` is claimed only for
+the canonical `Vit` domain documented in this module header.
+-/
+def ckyVit (indexed : IndexedCNF Vit) (words : Array Tok) : VitChart :=
+  ckyVitRange indexed words 0 words.size
+
+/-- Full-array Viterbi CKY is definitionally the normalized full-range entrypoint. -/
+theorem ckyVit_eq_range (indexed : IndexedCNF Vit) (words : Array Tok) :
+    ckyVit indexed words = ckyVitRange indexed words 0 words.size := rfl
+
+private def extractRangeAux (grammar : CNF Vit) (words : Array Tok)
+    (lower length : Nat) (chart : VitChart) :
     Nat → Nat → Nat → Nat → Option Derivation
   | 0, _, _, _ => none
   | fuel + 1, i, j, cat =>
-      if !(i < j && j ≤ words.size && cat < grammar.nNT) then none
+      if !(i < j && j ≤ length && cat < grammar.nNT) then none
       else
-        let target := Chart.cidx words.size grammar.nNT i j cat
+        let target := Chart.cidx length grammar.nNT i j cat
         let cellScore := chart.score.getD target 0
         if cellScore.toFloat == 0.0 then none
         else
@@ -170,9 +193,10 @@ private def extractAux (grammar : CNF Vit) (words : Array Tok) (chart : VitChart
             let ruleIndex := provenance.rule.toNat
             if ruleIndex < grammar.lex.size then
               let rule := grammar.lex[ruleIndex]!
-              if rule.lhs.toNat == cat && rule.tok == words[i]! &&
+              let token := words.getD (lower + i) 0
+              if rule.lhs.toNat == cat && rule.tok == token &&
                   rule.w.toFloat == cellScore.toFloat then
-                some (.lexical ruleIndex rule.lhs words[i]!)
+                some (.lexical ruleIndex rule.lhs token)
               else none
             else none
           else
@@ -186,19 +210,45 @@ private def extractAux (grammar : CNF Vit) (words : Array Tok) (chart : VitChart
                   if rule.lhs.toNat == cat &&
                       IndexedCNF.ruleInBounds grammar.nNT rule then
                     let leftIndex :=
-                      Chart.cidx words.size grammar.nNT i split rule.r1.toNat
+                      Chart.cidx length grammar.nNT i split rule.r1.toNat
                     let rightIndex :=
-                      Chart.cidx words.size grammar.nNT split j rule.r2.toNat
+                      Chart.cidx length grammar.nNT split j rule.r2.toNat
                     let expected :=
                       rule.w * chart.score.getD leftIndex 0 * chart.score.getD rightIndex 0
                     if !(expected.toFloat == cellScore.toFloat) then none
                     else
-                      match extractAux grammar words chart fuel i split rule.r1.toNat,
-                          extractAux grammar words chart fuel split j rule.r2.toNat with
+                      match
+                          extractRangeAux grammar words lower length chart
+                            fuel i split rule.r1.toNat,
+                          extractRangeAux grammar words lower length chart
+                            fuel split j rule.r2.toNat with
                       | some left, some right =>
                           some (.binary ruleIndex rule.lhs split left right)
                       | _, _ => none
                   else none
+
+private def extractAux (grammar : CNF Vit) (words : Array Tok) (chart : VitChart) :
+    Nat → Nat → Nat → Nat → Option Derivation :=
+  extractRangeAux grammar words 0 words.size chart
+
+/--
+Extract a source-preserving derivation from a chart over a normalized half-open token range.
+
+The chart and all returned split fenceposts use coordinates local to the selected range. Lexical
+tokens are checked against the original source array at its normalized lower bound.
+-/
+def extractGrammarDerivationRange (grammar : CNF Vit) (words : Array Tok)
+    (start stop : Nat) (chart : VitChart) : Option Derivation :=
+  let upper := min stop words.size
+  let lower := min start upper
+  let length := rangeLength words start stop
+  let expectedSize := Chart.entryCount length grammar.nNT
+  if length == 0 || grammar.start.toNat ≥ grammar.nNT ||
+      chart.score.size != expectedSize || chart.back.size != expectedSize then
+    none
+  else
+    extractRangeAux grammar words lower length chart (length + 1)
+      0 length grammar.start.toNat
 
 /--
 Extract a source-preserving derivation against the exact `CNF` that owns the chart ordinals.
@@ -209,12 +259,12 @@ Empty inputs, rejected parses, and malformed charts return `none`.
 -/
 def extractGrammarDerivation (grammar : CNF Vit) (words : Array Tok)
     (chart : VitChart) : Option Derivation :=
-  let expectedSize := Chart.entryCount words.size grammar.nNT
-  if words.isEmpty || grammar.start.toNat ≥ grammar.nNT ||
-      chart.score.size != expectedSize || chart.back.size != expectedSize then
-    none
-  else
-    extractAux grammar words chart (words.size + 1) 0 words.size grammar.start.toNat
+  extractGrammarDerivationRange grammar words 0 words.size chart
+
+/-- Extract the source-preserving one-best derivation over a normalized token range. -/
+def extractDerivationRange (indexed : IndexedCNF Vit) (words : Array Tok)
+    (start stop : Nat) (chart : VitChart) : Option Derivation :=
+  extractGrammarDerivationRange indexed.grammar words start stop chart
 
 /--
 Extract the source-preserving one-best derivation.
@@ -223,11 +273,16 @@ Returns `none` for an empty or rejected input and for every malformed chart/prov
 -/
 def extractDerivation (indexed : IndexedCNF Vit) (words : Array Tok)
     (chart : VitChart) : Option Derivation :=
-  extractGrammarDerivation indexed.grammar words chart
+  extractDerivationRange indexed words 0 words.size chart
+
+/-- Extract the ordinary tree view over a normalized token range. -/
+def extractTreeRange (indexed : IndexedCNF Vit) (words : Array Tok)
+    (start stop : Nat) (chart : VitChart) : Option Tree :=
+  (extractDerivationRange indexed words start stop chart).map Derivation.toTree
 
 /-- Extract the ordinary tree view of the source-preserving one-best derivation. -/
 def extractTree (indexed : IndexedCNF Vit) (words : Array Tok)
     (chart : VitChart) : Option Tree :=
-  (extractDerivation indexed words chart).map Derivation.toTree
+  extractTreeRange indexed words 0 words.size chart
 
 end Nlp.Parse.Viterbi

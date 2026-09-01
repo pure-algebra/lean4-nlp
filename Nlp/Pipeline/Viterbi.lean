@@ -28,6 +28,13 @@ structure ViterbiModel where
   private mk ::
   /-- Immutable parser data shared by all sentence analyses. -/
   compiled : CompiledCNF Vit
+  /-- Caller-supplied model identity retained for invariant-failure diagnostics. -/
+  diagnosticSource : String
+
+/-- A validated parser generated a reachable goal that failed checked extraction. -/
+inductive ViterbiDerivationError where
+  | generatedChartExtraction
+deriving Repr, DecidableEq, Inhabited
 
 namespace ViterbiModel
 
@@ -56,7 +63,7 @@ def compileWith (config : CompileConfig) (grammar : CNF Vit) :
     | .ok value => pure value
     | .error cause => throw <| .grammar cause
   validateWeights grammar
-  return ⟨CompiledCNF.compileCheckedWith config checked⟩
+  return ⟨CompiledCNF.compileCheckedWith config checked, "in-memory Viterbi grammar"⟩
 
 /-- Validate and compile with the production adaptive-index threshold. -/
 @[inline] def compile (grammar : CNF Vit) : Except ViterbiCompileError ViterbiModel :=
@@ -66,15 +73,62 @@ def compileWith (config : CompileConfig) (grammar : CNF Vit) :
 @[inline] def grammar (model : ViterbiModel) : CNF Vit :=
   model.compiled.grammar
 
+/-- Replace only the model identity retained by the effectful diagnostic boundary. -/
+private def withDiagnosticSource (model : ViterbiModel) (source : String) : ViterbiModel :=
+  .mk model.compiled source
+
+/--
+Produce a checked one-best derivation over a normalized half-open token range.
+
+An empty or unreachable goal is ordinary `none`. A nonzero generated goal that cannot be
+extracted is an internal invariant failure and remains distinct from rejected input.
+-/
+def derivationRangeChecked? (model : ViterbiModel) (words : Array Tok)
+    (start stop : Nat) :
+    Except ViterbiDerivationError (Option Parse.Viterbi.Derivation) :=
+  let chart := Parse.Viterbi.ckyVitCompiledRange model.compiled words start stop
+  let length := Parse.Viterbi.rangeLength words start stop
+  if length == 0 then
+    .ok none
+  else
+    let grammar := model.compiled.grammar
+    let goal := Parse.Chart.cidx length grammar.nNT 0 length grammar.start.toNat
+    match chart.score[goal]? with
+    | none => .error .generatedChartExtraction
+    | some score =>
+      if score.toFloat == 0.0 then
+        .ok none
+      else
+        match Parse.Viterbi.extractCompiledDerivationRange
+            model.compiled words start stop chart with
+        | some derivation => .ok (some derivation)
+        | none => .error .generatedChartExtraction
+
+/--
+Produce the exact one-best derivation over a normalized half-open token range.
+
+This compatibility view maps an impossible generated-chart extraction failure to `none`.
+Invariant-sensitive callers should use `derivationRangeChecked?`.
+-/
+def derivationRange? (model : ViterbiModel) (words : Array Tok)
+    (start stop : Nat) : Option Parse.Viterbi.Derivation :=
+  match model.derivationRangeChecked? words start stop with
+  | .ok result => result
+  | .error _ => none
+
 /-- Produce the exact one-best derivation through the pure functional model API. -/
 def derivation? (model : ViterbiModel) (words : Array Tok) :
     Option Parse.Viterbi.Derivation :=
-  let chart := Parse.Viterbi.ckyVitCompiled model.compiled words
-  Parse.Viterbi.extractCompiledDerivation model.compiled words chart
+  model.derivationRange? words 0 words.size
+
+/-- Produce the ordinary one-best tree over a normalized half-open token range. -/
+def parseRange? (model : ViterbiModel) (words : Array Tok)
+    (start stop : Nat) : Option Tree :=
+  (model.derivationRange? words start stop).map Parse.Viterbi.Derivation.toTree
 
 /-- Produce the ordinary one-best tree through the pure functional model API. -/
 def parse? (model : ViterbiModel) (words : Array Tok) : Option Tree :=
-  (model.derivation? words).map Parse.Viterbi.Derivation.toTree
+  model.parseRange? words 0 words.size
 
 end ViterbiModel
 
@@ -108,6 +162,11 @@ def viterbiCompileErrorDetail : ViterbiCompileError → String
   | .invalidLexicalWeight source value bits =>
       invalidWeightDetail "lexical" source value bits
 
+/-- Render a generated-chart derivation invariant failure. -/
+def viterbiDerivationErrorDetail : ViterbiDerivationError → String
+  | .generatedChartExtraction =>
+      "reachable generated Viterbi chart failed checked derivation extraction"
+
 /-- Adapt pure Viterbi validation to a path-aware typed model failure. -/
 def viterbiCompileErrorToFail (source : String) : ViterbiCompileError → Fail
   | .grammar cause => compileErrorToFail source cause
@@ -119,7 +178,7 @@ def compileViterbiModelWith (config : CompileConfig) (grammar : CNF Vit)
   checkCancelled
   let model ←
     match ViterbiModel.compileWith config grammar with
-    | .ok value => pure value
+    | .ok value => pure (value.withDiagnosticSource source)
     | .error error => throw <| viterbiCompileErrorToFail source error
   checkCancelled
   return model
@@ -140,11 +199,13 @@ def parseTree (model : ViterbiModel) (words : Array Tok) : NLP (Analysis Tree) :
   let config := (← read).config
   if let some reason := chartSkipReason? config model.grammar.nNT words.size then
     return .skipped reason
-  let tree := model.parse? words
+  let derivation := model.derivationRangeChecked? words 0 words.size
   checkCancelled
-  match tree with
-  | some value => return .ok value
-  | none => return .noAnalysis
+  match derivation with
+  | .ok (some value) => return .ok value.toTree
+  | .ok none => return .noAnalysis
+  | .error cause =>
+      throw <| .modelCorrupt model.diagnosticSource (viterbiDerivationErrorDetail cause)
 
 /--
 Parse sentences with an explicit item grain, bounded parallelism, and stable input order.

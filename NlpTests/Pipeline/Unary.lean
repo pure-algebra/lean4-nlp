@@ -33,6 +33,55 @@ def testPureFunctionalRoundTrip : IO Unit := do
   if (model.parse? #[4, 5]).map treeSignature != some (treeSignature sourceTree) then
     throw <| IO.userError "pure unary Viterbi parsing did not restore the source tree"
 
+private def checkPureRangeRoundTrip (model : UnaryViterbiModel) : IO Unit := do
+  let words : Array Tok := #[4, 5]
+  let padded : Array Tok := #[99, 4, 5, 98]
+  let clipped : Array Tok := #[99, 4, 5]
+  let full := model.derivation? words
+  let fullRange := model.derivationRange? words 0 words.size
+  let offsetRange := model.derivationRange? padded 1 3
+  let clippedRange := model.derivationRange? clipped 1 100
+  if fullRange != full || offsetRange != full || clippedRange != full then
+    throw <| IO.userError "unary derivation range changed exact local provenance"
+  if (model.derivationRange? padded 3 1).isSome then
+    throw <| IO.userError "reversed unary range did not normalize to empty input"
+  let checkedOffset := model.derivationRangeChecked? padded 1 3
+  match checkedOffset, model.parser.derivationRangeChecked? padded 1 3 with
+  | .ok unary, .ok delegated =>
+      if unary != delegated then
+        throw <| IO.userError "unary checked range changed delegated provenance"
+  | .error .generatedChartExtraction, .error .generatedChartExtraction => pure ()
+  | _, _ => throw <| IO.userError "unary checked range changed the delegated result shape"
+  match checkedOffset with
+  | .ok (some derivation) =>
+      if offsetRange != some derivation then
+        throw <| IO.userError "checked unary range changed compatibility provenance"
+      if derivation.toTree.yieldWords != words then
+        throw <| IO.userError "checked unary range read tokens outside its source bounds"
+      match model.restoreDerivation? derivation with
+      | none => throw <| IO.userError "checked unary derivation failed source restoration"
+      | some restored =>
+          if treeSignature restored != treeSignature sourceTree then
+            throw <| IO.userError "checked unary derivation restored a different source tree"
+  | .ok none => throw <| IO.userError "valid checked unary range had no derivation"
+  | .error _ => throw <| IO.userError "valid checked unary range reported extraction failure"
+  if (model.parseRange? padded 1 3).map treeSignature != some (treeSignature sourceTree) then
+    throw <| IO.userError "unary parse-range convenience wrapper changed the source tree"
+
+def testPureRangeRoundTrip : IO Unit := do
+  let grammar ← requireGrammar
+  let .ok dense :=
+      UnaryViterbiModel.compileWith .default { densePairCells := 1000 } grammar
+    | throw <| IO.userError "valid dense unary range model did not compile"
+  let .ok sparse :=
+      UnaryViterbiModel.compileWith .default { densePairCells := 0 } grammar
+    | throw <| IO.userError "valid sparse unary range model did not compile"
+  if dense.parser.compiled.pairLayout != .dense ||
+      sparse.parser.compiled.pairLayout != .sparse then
+    throw <| IO.userError "unary range fixtures did not select both compiled layouts"
+  checkPureRangeRoundTrip dense
+  checkPureRangeRoundTrip sparse
+
 def testEffectfulRoundTrip : IO Unit := do
   let grammar ← requireGrammar
   match ← NLP.runIO {} do
@@ -146,6 +195,7 @@ def testCancelled : IO Unit := do
   | _ => throw <| IO.userError "unary Viterbi parser lost its cancellation reason"
 
 #eval testPureFunctionalRoundTrip
+#eval testPureRangeRoundTrip
 #eval testEffectfulRoundTrip
 #eval testNoAnalysisAndLengthPolicy
 #eval testChartBudget

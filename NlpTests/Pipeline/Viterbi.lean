@@ -38,6 +38,27 @@ def testPureCompileAndTree : IO Unit := do
         throw <| IO.userError "Viterbi tree did not preserve the sentence yield"
   | _ => throw <| IO.userError "valid sentence did not produce a Viterbi tree"
 
+def testCheckedRanges : IO Unit := do
+  let .ok model := ViterbiModel.compile grammar
+    | throw <| IO.userError "checked-range Viterbi fixture did not compile"
+  let words : Array Tok := #[10, 11]
+  let padded : Array Tok := #[99, 10, 11, 98]
+  match model.derivationRangeChecked? padded 1 3 with
+  | .ok (some derivation) =>
+      if some derivation != model.derivation? words then
+        throw <| IO.userError "checked offset range changed exact local provenance"
+      if derivation.toTree.yieldWords != words then
+        throw <| IO.userError "checked offset range read outside its source bounds"
+  | .ok none => throw <| IO.userError "reachable checked offset range returned no derivation"
+  | .error _ => throw <| IO.userError "reachable checked offset range reported extraction failure"
+  match model.derivationRangeChecked? padded 0 1 with
+  | .ok none => pure ()
+  | _ => throw <| IO.userError "unreachable checked range was not ordinary none"
+  match (model.derivationRangeChecked? padded 3 1,
+      model.derivationRangeChecked? padded 2 2) with
+  | (.ok none, .ok none) => pure ()
+  | _ => throw <| IO.userError "normalized empty checked ranges were not ordinary none"
+
 def testNoAnalysis : IO Unit := do
   match ← NLP.runIO {} do
     let model ← NLP.compileViterbiModel grammar
@@ -136,6 +157,7 @@ def testCancelled : IO Unit := do
   | _ => throw <| IO.userError "Viterbi parser lost its cancellation reason"
 
 #eval testPureCompileAndTree
+#eval testCheckedRanges
 #eval testNoAnalysis
 #eval testTooLong
 #eval testChartBudget

@@ -33,6 +33,31 @@ private def equivalentWith (config : CompileConfig) (grammar : CNF Vit)
       treeSignature (Viterbi.extractCompiledTree compiled words adaptive) ==
         treeSignature (Viterbi.extractTree indexed words legacy)
 
+private def rangeEquivalentWith (config : CompileConfig) (grammar : CNF Vit)
+    (words : Array Tok) (start stop : Nat) (expected : Array Tok) : Bool :=
+  match CompiledCNF.compileWith config grammar with
+  | .error _ => false
+  | .ok compiled =>
+    let rangeChart := Viterbi.ckyVitCompiledRange compiled words start stop
+    let expectedChart := Viterbi.ckyVitCompiled compiled expected
+    scoreBits rangeChart == scoreBits expectedChart &&
+      rangeChart.back == expectedChart.back &&
+      Viterbi.extractCompiledDerivationRange compiled words start stop rangeChart ==
+        Viterbi.extractCompiledDerivation compiled expected expectedChart &&
+      treeSignature
+          (Viterbi.extractCompiledTreeRange compiled words start stop rangeChart) ==
+        treeSignature (Viterbi.extractCompiledTree compiled expected expectedChart)
+
+private def emptyRangeEquivalentWith (config : CompileConfig) (grammar : CNF Vit) : Bool :=
+  match CompiledCNF.compileWith config grammar with
+  | .error _ => false
+  | .ok compiled =>
+    let words : Array Tok := #[99, 0, 1, 2, 3, 4, 98]
+    let rangeChart := Viterbi.ckyVitCompiledRange compiled words 6 1
+    let emptyChart := Viterbi.ckyVitCompiled compiled #[]
+    scoreBits rangeChart == scoreBits emptyChart && rangeChart.back == emptyChart.back &&
+      (Viterbi.extractCompiledDerivationRange compiled words 6 1 rangeChart).isNone
+
 private def compiledDerivationWith? (config : CompileConfig) (grammar : CNF Vit)
     (words : Array Tok) :
     Option Viterbi.Derivation :=
@@ -79,6 +104,22 @@ private def thresholdLayoutsPreserveExactRuns : Bool :=
 
 /-- Crossing the exact `6²` threshold changes only layout, never score bits or backpointers. -/
 example : thresholdLayoutsPreserveExactRuns = true := by
+  native_decide
+
+private def normalizedRangesPreserveExactRuns : Bool :=
+  let padded : Array Tok := #[99, 0, 1, 2, 3, 4, 98]
+  let clipped : Array Tok := #[99, 0, 1, 2, 3, 4]
+  rangeEquivalentWith denseThreshold representative sentence 0 sentence.size sentence &&
+    rangeEquivalentWith alwaysSparse representative sentence 0 sentence.size sentence &&
+    rangeEquivalentWith denseThreshold representative padded 1 6 sentence &&
+    rangeEquivalentWith alwaysSparse representative padded 1 6 sentence &&
+    rangeEquivalentWith denseThreshold representative clipped 1 100 sentence &&
+    rangeEquivalentWith alwaysSparse representative clipped 1 100 sentence &&
+    emptyRangeEquivalentWith denseThreshold representative &&
+    emptyRangeEquivalentWith alwaysSparse representative
+
+/-- Dense and sparse ranges preserve exact charts, local derivations, and clamped bounds. -/
+example : normalizedRangesPreserveExactRuns = true := by
   native_decide
 
 private def ruleTieGrammar : CNF Vit :=

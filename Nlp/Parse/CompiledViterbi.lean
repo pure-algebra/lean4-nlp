@@ -29,11 +29,10 @@ private structure CompiledVitSeed where
         present := present.push nonterminal
     return present
 
-/-- Initialize width-one cells from only the stable bucket for each observed token. -/
-private def seedCompiledLexical (compiled : CompiledCNF Vit)
-    (words : Array Tok) : CompiledVitSeed := Id.run do
+/-- Initialize range-local width-one cells without allocating a token slice. -/
+private def seedCompiledLexicalRange (compiled : CompiledCNF Vit)
+    (words : Array Tok) (lower n : Nat) : CompiledVitSeed := Id.run do
   let grammar := compiled.grammar
-  let n := words.size
   let nCells := Chart.cellCount n
   let entries := nCells * grammar.nNT
   let mut score : Array Vit := Array.replicate entries 0
@@ -42,7 +41,8 @@ private def seedCompiledLexical (compiled : CompiledCNF Vit)
   for i in [0:n] do
     let cell := Chart.tri n i (i + 1)
     let base := cell * grammar.nNT
-    if let some range := compiled.lexicalRange? words[i]! then
+    let token := words.getD (lower + i) 0
+    if let some range := compiled.lexicalRange? token then
       for compiledIndex in [range.first:range.stop] do
         let rule := compiled.lexicalRules[compiledIndex]!
         let source := compiled.lexicalSources[compiledIndex]!
@@ -53,12 +53,16 @@ private def seedCompiledLexical (compiled : CompiledCNF Vit)
     nonzero := nonzero.set! cell (activeNonterminals score base grammar.nNT)
   return ⟨score, back, nonzero⟩
 
-/-- Dense pair-offset kernel. The layout branch stays outside the chart loops. -/
-private def ckyVitCompiledDense (compiled : CompiledCNF Vit) (starts : Array Nat)
-    (words : Array Tok) : VitChart := Id.run do
+/-- Initialize width-one cells from only the stable bucket for each observed token. -/
+private def seedCompiledLexical (compiled : CompiledCNF Vit)
+    (words : Array Tok) : CompiledVitSeed :=
+  seedCompiledLexicalRange compiled words 0 words.size
+
+/-- Dense pair-offset kernel over range-local chart coordinates. -/
+private def ckyVitCompiledDenseRange (compiled : CompiledCNF Vit)
+    (starts : Array Nat) (words : Array Tok) (lower n : Nat) : VitChart := Id.run do
   let grammar := compiled.grammar
-  let n := words.size
-  let seed := seedCompiledLexical compiled words
+  let seed := seedCompiledLexicalRange compiled words lower n
   let mut score := seed.score
   let mut back := seed.back
   let mut nonzero := seed.nonzero
@@ -92,13 +96,17 @@ private def ckyVitCompiledDense (compiled : CompiledCNF Vit) (starts : Array Nat
       nonzero := nonzero.set! cell (activeNonterminals score base grammar.nNT)
   return ⟨score, back⟩
 
-/-- Sparse observed-pair kernel. Only keys present in the compact index expose rule ranges. -/
-private def ckyVitCompiledSparse (compiled : CompiledCNF Vit)
+/-- Dense pair-offset kernel. The layout branch stays outside the chart loops. -/
+private def ckyVitCompiledDense (compiled : CompiledCNF Vit) (starts : Array Nat)
+    (words : Array Tok) : VitChart :=
+  ckyVitCompiledDenseRange compiled starts words 0 words.size
+
+/-- Sparse observed-pair kernel over range-local chart coordinates. -/
+private def ckyVitCompiledSparseRange (compiled : CompiledCNF Vit)
     (ordinals : Std.HashMap Nat Nat) (starts : Array Nat)
-    (words : Array Tok) : VitChart := Id.run do
+    (words : Array Tok) (lower n : Nat) : VitChart := Id.run do
   let grammar := compiled.grammar
-  let n := words.size
-  let seed := seedCompiledLexical compiled words
+  let seed := seedCompiledLexicalRange compiled words lower n
   let mut score := seed.score
   let mut back := seed.back
   let mut nonzero := seed.nonzero
@@ -133,6 +141,28 @@ private def ckyVitCompiledSparse (compiled : CompiledCNF Vit)
       nonzero := nonzero.set! cell (activeNonterminals score base grammar.nNT)
   return ⟨score, back⟩
 
+/-- Sparse observed-pair kernel. Only keys present in the compact index expose rule ranges. -/
+private def ckyVitCompiledSparse (compiled : CompiledCNF Vit)
+    (ordinals : Std.HashMap Nat Nat) (starts : Array Nat)
+    (words : Array Tok) : VitChart :=
+  ckyVitCompiledSparseRange compiled ordinals starts words 0 words.size
+
+/--
+Run compiled one-best CKY over a normalized half-open token range without allocating a slice.
+
+Both compiled layouts use range-local chart coordinates and read tokens from the normalized lower
+bound in the original array.
+-/
+def ckyVitCompiledRange (compiled : CompiledCNF Vit) (words : Array Tok)
+    (start stop : Nat) : VitChart :=
+  let upper := min stop words.size
+  let lower := min start upper
+  let length := rangeLength words start stop
+  match compiled.binaryIndex with
+  | .dense starts => ckyVitCompiledDenseRange compiled starts words lower length
+  | .sparse ordinals _ starts =>
+      ckyVitCompiledSparseRange compiled ordinals starts words lower length
+
 /--
 Run one-best CKY over a validated reusable grammar.
 
@@ -140,10 +170,19 @@ Exact original `CNF` rule ordinals are written to every backpointer. On nonzero 
 lower split wins, followed by the lower original source-rule ordinal, exactly as in `ckyVit`.
 The canonical `Vit` input caveats documented by the legacy kernel apply unchanged.
 -/
-def ckyVitCompiled (compiled : CompiledCNF Vit) (words : Array Tok) : VitChart :=
-  match compiled.binaryIndex with
-  | .dense starts => ckyVitCompiledDense compiled starts words
-  | .sparse ordinals _ starts => ckyVitCompiledSparse compiled ordinals starts words
+def ckyVitCompiled (compiled : CompiledCNF Vit)
+    (words : Array Tok) : VitChart :=
+  ckyVitCompiledRange compiled words 0 words.size
+
+/-- Full compiled CKY is definitionally the normalized full-range entrypoint. -/
+theorem ckyVitCompiled_eq_range (compiled : CompiledCNF Vit) (words : Array Tok) :
+    ckyVitCompiled compiled words =
+      ckyVitCompiledRange compiled words 0 words.size := rfl
+
+/-- Extract an exact-source derivation over a normalized half-open token range. -/
+def extractCompiledDerivationRange (compiled : CompiledCNF Vit)
+    (words : Array Tok) (start stop : Nat) (chart : VitChart) : Option Derivation :=
+  extractGrammarDerivationRange compiled.grammar words start stop chart
 
 /--
 Extract an exact-source derivation from a compiled Viterbi chart.
@@ -154,11 +193,16 @@ charts return `none`.
 -/
 def extractCompiledDerivation (compiled : CompiledCNF Vit) (words : Array Tok)
     (chart : VitChart) : Option Derivation :=
-  extractGrammarDerivation compiled.grammar words chart
+  extractCompiledDerivationRange compiled words 0 words.size chart
+
+/-- Extract the ordinary tree view of a compiled parse over a normalized token range. -/
+def extractCompiledTreeRange (compiled : CompiledCNF Vit) (words : Array Tok)
+    (start stop : Nat) (chart : VitChart) : Option Tree :=
+  (extractCompiledDerivationRange compiled words start stop chart).map Derivation.toTree
 
 /-- Extract the ordinary tree view of a compiled one-best derivation. -/
 def extractCompiledTree (compiled : CompiledCNF Vit) (words : Array Tok)
     (chart : VitChart) : Option Tree :=
-  (extractCompiledDerivation compiled words chart).map Derivation.toTree
+  extractCompiledTreeRange compiled words 0 words.size chart
 
 end Nlp.Parse.Viterbi

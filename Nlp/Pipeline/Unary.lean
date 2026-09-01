@@ -80,19 +80,39 @@ def compileWith (unaryConfig : UnaryElimConfig) (indexConfig : CompileConfig)
     Except UnaryViterbiCompileError UnaryViterbiModel :=
   compileWith UnaryElimConfig.default CompileConfig.default grammar
 
+/-- Parse a normalized half-open token range to the exact emitted derivation. -/
+@[inline] def derivationRange? (model : UnaryViterbiModel) (words : Array Tok)
+    (start stop : Nat) : Option Parse.Viterbi.Derivation :=
+  model.parser.derivationRange? words start stop
+
+/-- Parse a range while retaining generated-chart extraction failures. -/
+@[inline] def derivationRangeChecked? (model : UnaryViterbiModel) (words : Array Tok)
+    (start stop : Nat) :
+    Except ViterbiDerivationError (Option Parse.Viterbi.Derivation) :=
+  model.parser.derivationRangeChecked? words start stop
+
 /-- Parse to the exact emitted derivation through the pure functional API. -/
 @[inline] def derivation? (model : UnaryViterbiModel) (words : Array Tok) :
     Option Parse.Viterbi.Derivation :=
-  model.parser.derivation? words
+  model.derivationRange? words 0 words.size
 
 /-- Restore one exact emitted derivation to the original unbinarized treebank space. -/
 @[inline] def restoreDerivation? (model : UnaryViterbiModel)
     (derivation : Parse.Viterbi.Derivation) : Option Tree :=
   model.closed.restoreViterbi? derivation
 
+/-- Parse and exactly restore a normalized half-open token range. -/
+def parseRange? (model : UnaryViterbiModel) (words : Array Tok)
+    (start stop : Nat) : Option Tree :=
+  (model.derivationRange? words start stop).bind model.restoreDerivation?
+
 /-- Parse and exactly restore through the pure functional API. -/
 def parse? (model : UnaryViterbiModel) (words : Array Tok) : Option Tree :=
-  (model.derivation? words).bind model.restoreDerivation?
+  model.parseRange? words 0 words.size
+
+/-- Number of dense nonterminals allocated per chart cell. -/
+@[inline] def nonterminalCount (model : UnaryViterbiModel) : Nat :=
+  model.parser.grammar.nNT
 
 private def withDiagnosticSource (model : UnaryViterbiModel)
     (source : String) : UnaryViterbiModel :=
@@ -193,11 +213,13 @@ def parseUnaryTree (model : UnaryViterbiModel) (words : Array Tok) : NLP (Analys
   let config := (← read).config
   if let some reason := chartSkipReason? config model.parser.grammar.nNT words.size then
     return .skipped reason
-  let derivation := model.derivation? words
+  let derivation := model.derivationRangeChecked? words 0 words.size
   checkCancelled
   match derivation with
-  | none => return .noAnalysis
-  | some value =>
+  | .ok none => return .noAnalysis
+  | .error cause =>
+    throw <| .modelCorrupt model.diagnosticSource (viterbiDerivationErrorDetail cause)
+  | .ok (some value) =>
     let restored := model.restoreDerivation? value
     checkCancelled
     match restored with

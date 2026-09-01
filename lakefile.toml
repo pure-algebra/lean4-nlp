@@ -47,3 +47,7 @@ root = "Bench.Dependency"
 [[lean_exe]]
 name = "ner-benchmark"
 root = "Bench.Ner"
+
+[[lean_exe]]
+name = "constituency-benchmark"
+root = "Bench.Constituency"

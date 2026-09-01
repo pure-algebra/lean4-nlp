@@ -8,6 +8,9 @@ open Nlp.Parse
 
 private def sentence : Array Tok := #[0, 1, 2, 3, 4]
 
+private def scoreBits (value : Nlp.Parse.Viterbi.VitChart) : Array UInt64 :=
+  value.score.map fun score ↦ score.toFloat.toBits
+
 /-! A compact ambiguous attachment grammar with nonterminals
     S=0, NP=1, VP=2, PP=3, V=4, and P=5. -/
 private def grammar : CNF Vit :=
@@ -32,6 +35,39 @@ private def chartGoal : Vit :=
   chart.score.getD (goalIndex grammar sentence.size) 0
 private def derivation := Nlp.Parse.Viterbi.extractDerivation indexed sentence chart
 private def tree := Nlp.Parse.Viterbi.extractTree indexed sentence chart
+
+private def paddedSentence : Array Tok := #[99, 0, 1, 2, 3, 4, 98]
+private def rangeChart :=
+  Nlp.Parse.Viterbi.ckyVitRange indexed paddedSentence 1 6
+private def rangeDerivation :=
+  Nlp.Parse.Viterbi.extractDerivationRange indexed paddedSentence 1 6 rangeChart
+private def rangeTree :=
+  Nlp.Parse.Viterbi.extractTreeRange indexed paddedSentence 1 6 rangeChart
+
+/-- The full-array wrapper is bit- and provenance-identical to its normalized range call. -/
+example :
+    scoreBits chart ==
+        scoreBits (Nlp.Parse.Viterbi.ckyVitRange indexed sentence 0 sentence.size) &&
+      chart.back ==
+        (Nlp.Parse.Viterbi.ckyVitRange indexed sentence 0 sentence.size).back := by
+  native_decide
+
+/-- Offset parsing keeps local split coordinates and reads exactly the selected source tokens. -/
+example :
+    scoreBits rangeChart == scoreBits chart && rangeChart.back == chart.back &&
+      rangeDerivation == derivation && rangeTree.map Tree.yieldWords == some sentence := by
+  native_decide
+
+/-- Oversized stops clamp to input size, while reversed ranges normalize to empty input. -/
+example :
+    let clipped : Array Tok := #[99, 0, 1, 2, 3, 4]
+    let clippedChart := Nlp.Parse.Viterbi.ckyVitRange indexed clipped 1 100
+    let emptyChart := Nlp.Parse.Viterbi.ckyVitRange indexed paddedSentence 6 1
+    scoreBits clippedChart == scoreBits chart && clippedChart.back == chart.back &&
+      scoreBits emptyChart == scoreBits (Nlp.Parse.Viterbi.ckyVit indexed #[]) &&
+      emptyChart.back == (Nlp.Parse.Viterbi.ckyVit indexed #[]).back &&
+      (Nlp.Parse.Viterbi.extractDerivationRange indexed paddedSentence 6 1 emptyChart).isNone := by
+  native_decide
 
 /-- On canonical finite `[0, 1]` weights, provenance CKY matches the values-only oracle bits. -/
 example : chartGoal.toFloat.toBits = (ckyNaiveGoal grammar sentence).toFloat.toBits := by
