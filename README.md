@@ -21,12 +21,15 @@ Lean's standard library and is pinned to Lean 4.33.1.
 - linear-chain dynamic programming and a smoothed bigram HMM tagger;
 - source-preserving UTF-8 tokenization with source-byte spans, a persistent streaming cursor, exact
   whitespace mode, configurable English/UD-style rules, and deterministic sentence splitting;
+- POS-aware English lemmatization with exception-first lexical validation, ambiguous candidate
+  analyses, reversible suffix-rule witnesses, and automatically derived generator candidates;
 - CoNLL-U and Penn Treebank readers, bracket/chunk/tagging metrics, and EVALB-compatible scoring;
 - cancellation-aware, order-preserving bounded parallel corpus traversal with byte-weighted work
   planning for skewed corpora.
 
-The broader CoreNLP surface—full PTB tokenizer compatibility, morphology, NER, dependency parsing,
-model formats, and production CLI/package ergonomics—is still incomplete.
+The broader CoreNLP surface—full PTB tokenizer compatibility, morphological feature analysis,
+collocations, pretrained lexical data, NER, dependency parsing, model formats, and production
+CLI/package ergonomics—is still incomplete.
 
 ## Build and verify
 
@@ -37,6 +40,7 @@ lake build NlpCore
 lake build NlpTests
 lake build parallel-benchmark
 lake build tokenize-benchmark
+lake build morphology-benchmark
 ```
 
 `lake build` builds the public `NlpCore` library. `NlpTests` compiles the full theorem and
@@ -81,7 +85,26 @@ without moving effects into their hot path. `Nlp.NLP.tokenizeText`, `processText
 and `processTexts` provide checked effectful tokenization; corpus operations preserve order and
 schedule by UTF-8 byte weight. `Config.parallelMinGrain` is measured in items, while
 `Config.parallelMinWeight` is measured in caller-defined cost units; the tokenizer's
-`*WithMinBytes` APIs set the latter explicitly.
+`*WithMinBytes` APIs set the latter explicitly. English morphology is available functionally via
+`Morphology.Model.analyses`, `generate`, `lemmaOrSelf`, and `annotator`; `NLP.lemmatize` and
+`lemmatizeMany` add checked cancellation-aware application and token-weighted corpus traversal.
+The model deliberately accepts caller-supplied lexical and exception data rather than bundling a
+pretrained dictionary. Lookup is exact and case-sensitive, and document lemmatization requires an
+existing POS layer; a raw-text POS-name adapter and pretrained tagging model remain future work.
+
+The morphology model exposes ambiguity rather than hiding it, while `lemmaOrSelf` provides the
+conservative single-column policy used by the document annotator:
+
+```lean
+import Nlp
+
+open Nlp
+
+#eval
+  (Morphology.Model.compile #[⟨.noun, "dog"⟩] #[]).map fun model =>
+    model.lemmaOrSelf .noun "dogs"
+-- Except.ok "dog"
+```
 
 ## Algorithm sources and implementation contributions
 
@@ -94,6 +117,8 @@ The established algorithms are credited to their primary specifications:
   1995;
 - hidden Markov estimation and decoding: Lawrence Rabiner,
   [“A Tutorial on Hidden Markov Models”](https://doi.org/10.1109/5.18626), 1989;
+- English inflectional detachment and exception-first lexical validation: Princeton WordNet's
+  [Morphy reference](https://wordnet.princeton.edu/documentation/morphy7wn);
 - CoNLL-U syntax: the [Universal Dependencies format specification](https://universaldependencies.org/format.html);
 - constituency scoring: Sekine and Collins' [EVALB](https://nlp.cs.nyu.edu/evalb/), including
   the Brooks and Ellis updates;
@@ -113,6 +138,8 @@ Repository-specific implementation work is kept explicit in code and history:
 - imperative array kernels are related to functional folds by refinement theorems;
 - tokenizer spans use proof-carrying `String.Pos` endpoints, preserve exact source spelling, and
   avoid converting the whole input to a character list;
+- morphology keeps productive rules as invertible suffix relations with provenance, while the
+  lexicon-filtered analyzer remains explicitly many-valued and makes no bijectivity claim;
 - typed score newtypes prevent accidental cross-domain arithmetic while retaining specialized hot
   paths;
 - the effectful scheduler supports count- and weight-balanced chunks, caps dedicated threads,
@@ -138,7 +165,7 @@ This is an independent implementation inspired by classical NLP tasks and publis
 specifications. It is not affiliated with Stanford University or the Stanford CoreNLP project.
 The tokenizer follows documented behavior where implemented, but does not claim exact PTBTokenizer
 or CoreNLP compatibility. No CoreNLP source code, model files, or generated model artifacts are
-included.
+included. No WordNet database or exception-list data is included.
 
 ## Licensing
 
