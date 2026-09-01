@@ -1,7 +1,8 @@
-import Nlp.Core.Algebra.Ops
+import Nlp.Core.Algebra.Laws
 import Nlp.Grammar.CNF
 import Nlp.Grammar.IndexedCNF
 import Nlp.Parse.Chart
+import Nlp.Parse.ChartLemmas
 
 /-!
 # Reference CKY parser
@@ -16,6 +17,13 @@ namespace Nlp.Parse
 @[inline] def goalIndex (grammar : CNF K) (n : Nat) : Nat :=
   Chart.cidx n grammar.nNT 0 n grammar.start.toNat
 
+/-- For a non-empty sentence and an in-bounds start symbol, the goal cell is inside the chart, so
+`ckyNaiveGoal`/`ckyGoal` read a genuinely computed entry rather than the `getD` fallback. -/
+theorem goalIndex_lt_entryCount (grammar : CNF K) {n : Nat} (hn : 0 < n)
+    (hstart : grammar.start.toNat < grammar.nNT) :
+    goalIndex grammar n < Chart.entryCount n grammar.nNT :=
+  Chart.cidx_lt_entryCount hn (Nat.le_refl n) hstart
+
 /--
 Reference semiring-generic CKY.  The result is a dense, width-major triangular chart.
 
@@ -29,7 +37,7 @@ def ckyNaive {K : Type} [SemiringOps K] [Inhabited K]
     let mut chart : Array K := Array.replicate (Chart.entryCount n grammar.nNT) 0
     for i in [0:n] do
       for rule in grammar.lex do
-        if rule.tok == words[i]! then
+        if rule.tok == words[i]! && rule.lhs.toNat < grammar.nNT then
           let target := Chart.cidx n grammar.nNT i (i + 1) rule.lhs.toNat
           chart := chart.set! target (chart[target]! + rule.w)
     for width in [2:n + 1] do
@@ -37,10 +45,11 @@ def ckyNaive {K : Type} [SemiringOps K] [Inhabited K]
         let j := i + width
         for split in [i + 1:j] do
           for rule in grammar.bin do
-            let left := chart[Chart.cidx n grammar.nNT i split rule.r1.toNat]!
-            let right := chart[Chart.cidx n grammar.nNT split j rule.r2.toNat]!
-            let target := Chart.cidx n grammar.nNT i j rule.lhs.toNat
-            chart := chart.set! target (chart[target]! + rule.w * left * right)
+            if IndexedCNF.ruleInBounds grammar.nNT rule then
+              let left := chart[Chart.cidx n grammar.nNT i split rule.r1.toNat]!
+              let right := chart[Chart.cidx n grammar.nNT split j rule.r2.toNat]!
+              let target := Chart.cidx n grammar.nNT i j rule.lhs.toNat
+              chart := chart.set! target (chart[target]! + rule.w * left * right)
     return chart
 
 /-- Run the reference parser and return the start-symbol value over the full sentence. -/
@@ -52,13 +61,13 @@ def ckyNaiveGoal {K : Type} [SemiringOps K] [Inhabited K]
 /--
 Sparse CKY using nonzero-cell lists and `(r1, r2)` grammar buckets.
 
-`BEq` is required only to ask whether a chart value equals the semiring zero.  Callers must
-ensure that `value == 0` recognizes the additive identity; this is stronger than arbitrary
-Boolean equality and is the only semantic use of `BEq` here.  Carriers without a sound zero test
-can continue to use `ckyNaive`.
+`LawfulBEq` makes the zero test exact. `LawfulSemiringMinusAssoc` justifies pruning zero children
+and regrouping alternatives into child-pair buckets. Carriers that intentionally expose only
+operational arithmetic can continue to use `ckyNaive` or a dedicated monomorphic kernel.
 -/
 @[specialize]
-def ckySparse {K : Type} [SemiringOps K] [Inhabited K] [BEq K]
+def ckySparse {K : Type} [SemiringOps K] [LawfulSemiringMinusAssoc K]
+    [Inhabited K] [BEq K] [LawfulBEq K]
     (indexed : IndexedCNF K) (words : Array Tok) : Array K :=
   Id.run do
     let grammar := indexed.grammar
@@ -110,13 +119,15 @@ def ckySparse {K : Type} [SemiringOps K] [Inhabited K] [BEq K]
 
 /-- Optimized CKY entry point.  Pre-index and call `ckySparse` to reuse an index across parses. -/
 @[specialize]
-def cky {K : Type} [SemiringOps K] [Inhabited K] [BEq K]
+def cky {K : Type} [SemiringOps K] [LawfulSemiringMinusAssoc K]
+    [Inhabited K] [BEq K] [LawfulBEq K]
     (grammar : CNF K) (words : Array Tok) : Array K :=
   ckySparse grammar.index words
 
 /-- Run optimized CKY and return the start-symbol value over the full sentence. -/
 @[specialize]
-def ckyGoal {K : Type} [SemiringOps K] [Inhabited K] [BEq K]
+def ckyGoal {K : Type} [SemiringOps K] [LawfulSemiringMinusAssoc K]
+    [Inhabited K] [BEq K] [LawfulBEq K]
     (grammar : CNF K) (words : Array Tok) : K :=
   (cky grammar words).getD (goalIndex grammar words.size) 0
 

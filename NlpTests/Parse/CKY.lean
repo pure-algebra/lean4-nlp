@@ -2,6 +2,7 @@ import Nlp.Core.Score.Count
 import Nlp.Core.Score.Recog
 import Nlp.Core.Score.Vit
 import Nlp.Parse.CKY
+import Nlp.Parse.CKYLemmas
 
 namespace NlpTests.Parse.CKY
 
@@ -83,5 +84,36 @@ example : cky lexicalOnly #[7] = ckyNaive lexicalOnly #[7] := by native_decide
 example : (ckyGoal lexicalOnly #[7]).toNat = 2 := by native_decide
 
 example : cky countGrammar #[] = ckyNaive countGrammar #[] := by native_decide
+
+private def grammarWithOutOfBoundsIds : CNF Count :=
+  { countGrammar with
+    bin := countGrammar.bin.push ⟨0, 99, 0, 1⟩
+    lex := countGrammar.lex.push ⟨99, 0, 1⟩ }
+
+example :
+    cky grammarWithOutOfBoundsIds sentence =
+      ckyNaive grammarWithOutOfBoundsIds sentence := by
+  native_decide
+
+/-! The proved lexical-layer characterization instantiates at the test grammar, and the
+characterized cell value matches direct evaluation. -/
+
+example :
+    (ckyNaive countGrammar sentence).getD (Chart.cidx 5 6 0 1 1) 0 =
+      lexCellSum countGrammar sentence 0 1 :=
+  ckyNaive_getD_lex countGrammar sentence 0 1 (by decide) (by decide)
+
+example : (lexCellSum countGrammar sentence 0 1).toNat = 1 := by native_decide
+
+/-- The binary Bellman characterization instantiates at the goal cell of the test grammar. -/
+example :
+    (ckyNaive countGrammar sentence).getD (Chart.cidx 5 6 0 5 0) 0 =
+      binCellSum countGrammar sentence (ckyNaive countGrammar sentence) 0 5 0 :=
+  ckyNaive_getD_bin countGrammar sentence 0 5 0 (by omega) (by decide) (by decide)
+
+/-- The characterized goal-cell value agrees with direct evaluation: two parses. -/
+example :
+    (binCellSum countGrammar sentence (ckyNaive countGrammar sentence) 0 5 0).toNat = 2 := by
+  native_decide
 
 end NlpTests.Parse.CKY
