@@ -34,6 +34,12 @@ Lean's standard library and is pinned to Lean 4.33.1.
 - deterministic single-root nonprojective parsing with Chu--Liu--Edmonds and Tarjan's dense
   quadratic refinement, checked reconstruction, exact label provenance, and functional plus
   effectful document APIs;
+- proof-carrying enhanced-dependency multigraphs in canonical CSR form, including reentrancy,
+  cycles, multiple root arcs, empty/copy node identifiers, exact resource limits, and typed
+  CoNLL-U `DEPS` parsing and rendering;
+- bounded English enhanced-UD construction with marker lexicalization, direct incoming
+  coordination propagation, independent exhaustive-oracle checks, and functional plus effectful
+  sentence/document/corpus APIs;
 - typed BIO2 labels, a validated named HMM tagger, checked mention extraction, flat entity-class
   projection, and functional plus effectful sentence/document/corpus APIs;
 - typed regular token languages, a bounded compiled Thompson NFA, exact Aho--Corasick phrase
@@ -45,7 +51,8 @@ Lean's standard library and is pinned to Lean 4.33.1.
 The broader CoreNLP surface—full PTB tokenizer compatibility, morphological feature analysis,
 collocations, pretrained lexical/NER/dependency models, feature-rich CRF NER, numeric/time
 normalization, the full TokensRegex textual language and composition stages, enhanced dependency
-construction, CoreNLP model formats, and production CLI/package ergonomics—is
+control/raising, relative-clause, ellipsis, outgoing-sharing, and Enhanced++ construction,
+CoreNLP model formats, and production CLI/package ergonomics—is
 still incomplete.
 
 ## Quick start
@@ -62,6 +69,17 @@ lake build NlpTests
 The repository pins Lean 4.33.1 in `lean-toolchain`; `elan` selects it automatically. `NlpCore`
 is the public library and `NlpTests` compiles the full theorem and regression suite.
 
+To use the library from another Lake TOML project, add:
+
+```toml
+[[require]]
+name = "lean4-nlp"
+git = "https://github.com/mepuka/lean4-nlp.git"
+rev = "main"
+```
+
+Then write `import Nlp` in Lean source files. Pin `rev` to a release tag or commit when available.
+
 Optional native benchmark targets are separate from the library:
 
 ```bash
@@ -73,6 +91,7 @@ lake build unary-benchmark
 lake build compiled-viterbi-benchmark
 lake build dependency-benchmark
 lake build arborescence-benchmark
+lake build enhanced-dependency-benchmark
 lake build ner-benchmark
 lake build constituency-benchmark
 lake build regexner-benchmark
@@ -179,6 +198,22 @@ decoder, not a trained dependency model. Structural validity is proof-carrying; 
 regression-checked against an independent exhaustive oracle rather than exposed as a Lean theorem
 today.
 
+Enhanced dependencies use a separate checked graph instead of overloading the one-head-per-token
+`Doc.head` column. `Dependency.Graph.ofRows` constructs general rooted graphs with reentrancy and
+cycles; `Graph.ofTree` lifts a checked basic tree. `IO.parseDeps`, `renderDeps`, and
+`ConlluSentence.toDependencyGraph` expose the typed CoNLL-U boundary, including empty nodes and the
+distinction between unspecified `_` and a present enhanced graph. English construction is
+functional through `Dependency.EnglishEnhanced.enhanceTree?`, `enhanceRange?`, and
+`enhanceDocument?`; `NLP.enhanceDependencies` and its ordered batch variants add semantic input
+validation, cancellation, sentence-length policy, and exact candidate/edge/lexical-byte limits.
+`EnglishEnhanced.documentWork` exposes the token-plus-UTF-8 weighting used by
+`NLP.enhanceDependenciesManyWithMinWork`. The current rules replace selected
+`nmod`/`obl`/`acl`/`advcl`/`conj` labels with their lexicalized enhanced forms. They retain the
+primary conjunct edge and add the incoming governor relation to direct conjuncts. They deliberately
+do not claim full enhanced UD or Stanford Enhanced++ compatibility: control/raising subjects,
+relative `ref` cycles, outgoing argument sharing, elided predicates, and graph-copy rewrites remain
+future work.
+
 Named-entity recognition is functional through `NerTagger.compile`, `estimate`, `tagForms`,
 `tagRange`, `classesForms`, and `extractMentions`. The private-constructor model validates exact
 case-sensitive vocabulary, a collision-free OOV identifier, numeric HMM storage, canonical BIO2
@@ -254,7 +289,13 @@ The established algorithms are credited to their primary specifications:
   2020;
 - English inflectional detachment and exception-first lexical validation: Princeton WordNet's
   [Morphy reference](https://wordnet.princeton.edu/documentation/morphy7wn);
-- CoNLL-U syntax: the [Universal Dependencies format specification](https://universaldependencies.org/format.html);
+- CoNLL-U syntax: the
+  [Universal Dependencies format specification](https://universaldependencies.org/format.html);
+- enhanced dependency graphs and relation-label extensions: the Universal Dependencies
+  [enhanced syntax specification](https://universaldependencies.org/u/overview/enhanced-syntax.html)
+  and Schuster and Manning,
+  [“Enhanced English Universal Dependencies”](https://nlp.stanford.edu/pubs/schuster2016enhanced.pdf),
+  2016;
 - constituency scoring: Sekine and Collins' [EVALB](https://nlp.cs.nyu.edu/evalb/), including
   the Brooks and Ellis updates;
 - tokenizer behavior and compatibility vocabulary: Stanford's
@@ -306,6 +347,11 @@ Repository-specific implementation work is kept explicit in code and history:
   accounting bounds adversarial exponent spans; a lexicographic root-arc-count/exact-dyadic weight
   enforces exactly one root without repeated decoding, rounded reductions, or a floating-point
   big-M constant;
+- enhanced graphs use canonical dependent-keyed CSR columns, validate endpoints and root
+  reachability in expected linear time, preserve per-edge provenance, and keep graph semantics
+  distinct from basic-tree document columns; English enhancement preindexes direct children,
+  preflights exact candidate/edge/lexical-byte budgets, and checks its optimized rows against an
+  independent list-based oracle over every valid parent function through four words;
 - BIO2-constrained decoding compiles legal predecessors into ascending CSR buckets and uses flat
   backpointers plus separate reachability bits so overflowed costs remain distinguishable from
   impossible paths;
@@ -352,6 +398,10 @@ treebank-induced CKY/unary-restoration pipeline and cannot load Stanford parser 
 database or exception-list data is included. The RegexNER surface accepts typed programmatic
 patterns and exact phrases; it does not accept Stanford mapping files or claim full TokensRegex
 language, annotation, capture, or action compatibility.
+
+The enhanced-dependency surface is an independently implemented, explicitly bounded word-node
+subset of the published UD transformations. It is not a port of CoreNLP's GPL converter and does
+not yet implement Stanford Enhanced++ copy/ellipsis/control/relative-clause behavior.
 
 ## Licensing
 
