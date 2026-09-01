@@ -27,13 +27,27 @@ def EdgesTopological (edges : Array (Edge K)) : Prop :=
       ∀ (producer : Nat) (hp : producer < edges.size),
         (edges[producer]'hp).head = tail → producer < consumer
 
+/-- Every head and tail identifier names a node in an `n`-node hypergraph. -/
+def EdgesInBounds (n : Nat) (edges : Array (Edge K)) : Prop :=
+  ∀ (edgeIdx : Nat) (h : edgeIdx < edges.size),
+    (edges[edgeIdx]'h).head.toNat < n ∧
+      ∀ tail ∈ (edges[edgeIdx]'h).tails, tail.toNat < n
+
+instance (edges : Array (Edge K)) : Decidable (EdgesTopological edges) := by
+  unfold EdgesTopological
+  infer_instance
+
+instance (n : Nat) (edges : Array (Edge K)) : Decidable (EdgesInBounds n edges) := by
+  unfold EdgesInBounds
+  infer_instance
+
 /--
 Compute every node's inside value in one sweep.
 
-Precondition: `EdgesTopological edges`.  The runtime kernel intentionally does not inspect or sort
-the edges; a future checked constructor or a proof module can discharge that erased proposition.
-The semiring's own zero supplies all out-of-range defaults, so no `Inhabited K` or panic path is
-needed.
+Preconditions: `EdgesTopological edges` and `EdgesInBounds n edges`. The runtime kernel
+intentionally does not inspect or sort the edges; a future checked constructor or proof module can
+discharge those erased propositions. The semiring's own zero supplies defaults, so no
+`Inhabited K` constraint is needed.
 -/
 @[specialize]
 def inside {K : Type} [SemiringOps K] (n : Nat) (edges : Array (Edge K)) : Array K := Id.run do
