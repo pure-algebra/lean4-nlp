@@ -246,20 +246,17 @@ private def tagNamedEntitiesAt (location : String) (tagger : Sequence.NerTagger)
 @[inline] def tagNamedEntitiesManyWithMinTokens (minTokens : Nat)
     (tagger : Sequence.NerTagger) (documents : Array (Doc available))
     (requirements : Sub [.tokens] available := by decide) :
-    NLP (Array (Analysis (Doc (.ner :: available)))) := do
-  let indexed := documents.mapIdx fun index doc ↦ (index, doc)
-  traverseArrayWeightedWithMinWeight minTokens indexed
-    (fun item ↦ Sequence.NerTagger.documentWork item.2) fun item ↦
-      tagNamedEntitiesAt s!"NER tagger input document {item.1}" tagger item.2 requirements
+    NLP (Array (Analysis (Doc (.ner :: available)))) :=
+  traverseArrayWeightedIndexedWithMinWeight minTokens documents
+    Sequence.NerTagger.documentWork fun index doc ↦
+      tagNamedEntitiesAt s!"NER tagger input document {index}" tagger doc requirements
 
 /-- Recognize a corpus with bounded token-weighted concurrency and stable input order. -/
 @[inline] def tagNamedEntitiesMany (tagger : Sequence.NerTagger)
     (documents : Array (Doc available))
     (requirements : Sub [.tokens] available := by decide) :
-    NLP (Array (Analysis (Doc (.ner :: available)))) := do
-  let indexed := documents.mapIdx fun index doc ↦ (index, doc)
-  traverseArrayWeighted indexed
-    (fun item ↦ Sequence.NerTagger.documentWork item.2) fun item ↦
-      tagNamedEntitiesAt s!"NER tagger input document {item.1}" tagger item.2 requirements
+    NLP (Array (Analysis (Doc (.ner :: available)))) :=
+  traverseArrayWeightedIndexed documents Sequence.NerTagger.documentWork fun index doc ↦
+    tagNamedEntitiesAt s!"NER tagger input document {index}" tagger doc requirements
 
 end Nlp.NLP

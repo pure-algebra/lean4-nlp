@@ -124,27 +124,37 @@ private def testOrderedBatch : IO Unit := do
     parallelMinWeight := 1
     maxDedicatedThreads := 4
   }
-  match ← NLP.runIO config do
+  let withMinimum ← NLP.runIO config do
     let tagger ← NLP.compileNerTagger hmm #["x"] #["O", "B-X", "I-X"]
     NLP.tagNamedEntitiesManyWithMinTokens 1 tagger documents
-  with
-  | .ok output =>
-    let labels := output.map fun result ↦
+  let configured ← NLP.runIO config do
+    let tagger ← NLP.compileNerTagger hmm #["x"] #["O", "B-X", "I-X"]
+    NLP.tagNamedEntitiesMany tagger documents
+  match withMinimum, configured with
+  | .ok minimumOutput, .ok configuredOutput =>
+    let labels := fun output ↦ output.map fun result ↦
       match result with
       | .ok doc => doc.ner
       | _ => #["unexpected"]
-    if labels != #[#["X"], #["X", "O"], #[], #["X"]] then
+    let expected := #[#["X"], #["X", "O"], #[], #["X"]]
+    if labels minimumOutput != expected || labels configuredOutput != expected then
       throw <| IO.userError "parallel NER lost stable order or an exact pure result"
-  | .error cause => throw <| IO.userError s!"parallel NER failed: {cause}"
+  | .error cause, _ | _, .error cause =>
+      throw <| IO.userError s!"parallel NER failed: {cause}"
 
 private def testBatchFailureLocation : IO Unit := do
   let documents := #[sentenced, malformed]
-  match ← NLP.runIO { numThreads := 2, parallelMinWeight := 1 } do
+  let config : Config := { numThreads := 2, parallelMinWeight := 1 }
+  let withMinimum ← NLP.runIO config do
     let tagger ← NLP.compileNerTagger hmm #["x"] #["O", "B-X", "I-X"]
     NLP.tagNamedEntitiesManyWithMinTokens 1 tagger documents
-  with
-  | .error (.invalidInput "NER tagger input document 1" _) => pure ()
-  | _ => throw <| IO.userError "parallel NER failure lost its document ordinal"
+  let configured ← NLP.runIO config do
+    let tagger ← NLP.compileNerTagger hmm #["x"] #["O", "B-X", "I-X"]
+    NLP.tagNamedEntitiesMany tagger documents
+  match withMinimum, configured with
+  | .error (.invalidInput "NER tagger input document 1" _),
+      .error (.invalidInput "NER tagger input document 1" _) => pure ()
+  | _, _ => throw <| IO.userError "parallel NER failure lost its document ordinal"
 
 private def testCancelled : IO Unit := do
   let .ok tagger := compileTagger
