@@ -31,3 +31,7 @@ root = "Bench.Morphology"
 [[lean_exe]]
 name = "pos-benchmark"
 root = "Bench.Pos"
+
+[[lean_exe]]
+name = "unary-benchmark"
+root = "Bench.Unary"
