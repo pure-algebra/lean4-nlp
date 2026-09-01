@@ -30,6 +30,7 @@ private def indexed := grammar.index
 private def chart := Nlp.Parse.Viterbi.ckyVit indexed sentence
 private def chartGoal : Vit :=
   chart.score.getD (goalIndex grammar sentence.size) 0
+private def derivation := Nlp.Parse.Viterbi.extractDerivation indexed sentence chart
 private def tree := Nlp.Parse.Viterbi.extractTree indexed sentence chart
 
 /-- On canonical finite `[0, 1]` weights, provenance CKY matches the values-only oracle bits. -/
@@ -40,6 +41,10 @@ example : Float.abs (chartGoal.toFloat - 0.0252) < 1e-12 := by native_decide
 
 example : tree.map Tree.yieldWords = some sentence := by native_decide
 example : tree.map Tree.width = some sentence.size := by native_decide
+
+/-- The legacy tree API is exactly the production-identity-free derivation projection. -/
+example : derivation.map Nlp.Parse.Viterbi.Derivation.toTree = tree := by
+  rfl
 
 private def spansWellFormed (parsed : Tree) (n : Nat) : Bool :=
   let spans := parsed.spans
@@ -156,6 +161,18 @@ private def duplicateGoal : Vit :=
 private def duplicateTree :=
   Nlp.Parse.Viterbi.extractTree duplicateIndexed duplicateWords duplicateChart
 
+private def duplicateSources : Option (Nat × Nat × Nat) := do
+  let derivation ←
+    Nlp.Parse.Viterbi.extractDerivation duplicateIndexed duplicateWords duplicateChart
+  match derivation with
+  | .binary binarySource _ _ (.lexical leftSource _ _) (.lexical rightSource _ _) =>
+      some (binarySource, leftSource, rightSource)
+  | _ => none
+
+/-- Duplicate displayed shapes retain the exact winning binary and lexical source positions. -/
+example : duplicateSources = some (1, 1, 2) := by
+  native_decide
+
 /-- Re-scoring sums erased duplicate identities, so the extracted tree attains the chart goal. -/
 example :
     (duplicateTree.bind (treeScore duplicateGrammar)).map
@@ -182,6 +199,10 @@ private def malformedBack : Nlp.Parse.Viterbi.VitChart :=
     back := chart.back.set! (goalIndex grammar sentence.size) ⟨0, 0⟩ }
 
 example : (Nlp.Parse.Viterbi.extractTree indexed sentence malformedBack).isNone = true := by
+  native_decide
+
+example :
+    (Nlp.Parse.Viterbi.extractDerivation indexed sentence malformedBack).isNone = true := by
   native_decide
 
 private def malformedSize : Nlp.Parse.Viterbi.VitChart := ⟨#[], #[]⟩

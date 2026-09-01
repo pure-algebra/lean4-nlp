@@ -27,13 +27,34 @@ structure Back where
   rule : UInt32
   /-- Absolute split fencepost.  Unused for width-one cells. -/
   split : UInt32
-deriving BEq, DecidableEq, Repr, Inhabited
+deriving DecidableEq, Repr, Inhabited
 
 /-- Parallel Viterbi score and provenance charts, both indexed with `Chart.cidx`. -/
 structure VitChart where
   score : Array Vit
   back : Array Back
 deriving Repr, Inhabited
+
+/--
+A source-preserving one-best derivation.
+
+Rule positions are retained even when multiple source productions have identical displayed
+shapes. This is the semantic extraction form; `Tree` is its production-identity-free view.
+-/
+inductive Derivation where
+  | lexical (source : Nat) (lhs : NT) (token : Tok)
+  | binary (source : Nat) (lhs : NT) (split : Nat)
+      (left right : Derivation)
+deriving Repr, DecidableEq, Inhabited
+
+namespace Derivation
+
+/-- Erase production identity and split provenance into the ordinary constituency-tree view. -/
+def toTree : Derivation → Tree
+  | .lexical _ lhs token => .node lhs (.leaf token) #[]
+  | .binary _ lhs _ left right => .node lhs left.toTree #[right.toTree]
+
+end Derivation
 
 @[inline] private def Back.precedes (candidateSplit candidateRule : Nat)
     (current : Back) : Bool :=
@@ -135,7 +156,7 @@ def ckyVit (indexed : IndexedCNF Vit) (words : Array Tok) : VitChart := Id.run d
   return ⟨score, back⟩
 
 private def extractAux (indexed : IndexedCNF Vit) (words : Array Tok) (chart : VitChart) :
-    Nat → Nat → Nat → Nat → Option Tree
+    Nat → Nat → Nat → Nat → Option Derivation
   | 0, _, _, _ => none
   | fuel + 1, i, j, cat =>
       if !(i < j && j ≤ words.size && cat < indexed.grammar.nNT) then none
@@ -151,7 +172,7 @@ private def extractAux (indexed : IndexedCNF Vit) (words : Array Tok) (chart : V
               let rule := indexed.grammar.lex[ruleIndex]!
               if rule.lhs.toNat == cat && rule.tok == words[i]! &&
                   rule.w.toFloat == cellScore.toFloat then
-                some (.node rule.lhs (.leaf words[i]!) #[])
+                some (.lexical ruleIndex rule.lhs words[i]!)
               else none
             else none
           else
@@ -174,17 +195,18 @@ private def extractAux (indexed : IndexedCNF Vit) (words : Array Tok) (chart : V
                     else
                       match extractAux indexed words chart fuel i split rule.r1.toNat,
                           extractAux indexed words chart fuel split j rule.r2.toNat with
-                      | some left, some right => some (.node rule.lhs left #[right])
+                      | some left, some right =>
+                          some (.binary ruleIndex rule.lhs split left right)
                       | _, _ => none
                   else none
 
 /--
-Extract the one-best constituency tree.
+Extract the source-preserving one-best derivation.
 
 Returns `none` for an empty or rejected input and for every malformed chart/provenance condition.
 -/
-def extractTree (indexed : IndexedCNF Vit) (words : Array Tok)
-    (chart : VitChart) : Option Tree :=
+def extractDerivation (indexed : IndexedCNF Vit) (words : Array Tok)
+    (chart : VitChart) : Option Derivation :=
   let expectedSize := Chart.entryCount words.size indexed.grammar.nNT
   if words.isEmpty || indexed.grammar.start.toNat ≥ indexed.grammar.nNT ||
       chart.score.size != expectedSize || chart.back.size != expectedSize then
@@ -192,5 +214,10 @@ def extractTree (indexed : IndexedCNF Vit) (words : Array Tok)
   else
     extractAux indexed words chart (words.size + 1) 0 words.size
       indexed.grammar.start.toNat
+
+/-- Extract the ordinary tree view of the source-preserving one-best derivation. -/
+def extractTree (indexed : IndexedCNF Vit) (words : Array Tok)
+    (chart : VitChart) : Option Tree :=
+  (extractDerivation indexed words chart).map Derivation.toTree
 
 end Nlp.Parse.Viterbi
