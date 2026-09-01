@@ -7,6 +7,7 @@ import NlpTests.Pipeline.Annotate
 import NlpTests.Pipeline.Tokenize
 import NlpTests.Pipeline.Morphology
 import NlpTests.Pipeline.Pos
+import NlpTests.Pipeline.English
 import NlpTests.Pipeline.Corpora
 import NlpTests.Pipeline.Parse
 import NlpTests.Pipeline.Viterbi

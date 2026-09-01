@@ -8,6 +8,7 @@ import Nlp.Pipeline.Annotate
 import Nlp.Pipeline.Tokenize
 import Nlp.Pipeline.Morphology
 import Nlp.Pipeline.Pos
+import Nlp.Pipeline.English
 import Nlp.Pipeline.Corpora
 import Nlp.Pipeline.Parse
 import Nlp.Pipeline.Viterbi
