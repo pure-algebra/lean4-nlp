@@ -51,3 +51,7 @@ root = "Bench.Ner"
 [[lean_exe]]
 name = "constituency-benchmark"
 root = "Bench.Constituency"
+
+[[lean_exe]]
+name = "regexner-benchmark"
+root = "Bench.RegexNer"
