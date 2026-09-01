@@ -23,7 +23,8 @@ Lean's standard library and is pinned to Lean 4.33.1.
 - linear-chain dynamic programming, a smoothed bigram HMM, and a validated named POS tagger with
   exact vocabulary lookup, reserved OOV handling, and sentence-boundary resets;
 - source-preserving UTF-8 tokenization with source-byte spans, a persistent streaming cursor, exact
-  whitespace mode, configurable English/UD-style rules, and deterministic sentence splitting;
+  whitespace mode, configurable English/UD-style rules, conservative URL/email/handle/hashtag
+  recognition, and deterministic sentence splitting;
 - POS-aware English lemmatization with exception-first lexical validation, ambiguous candidate
   analyses, reversible suffix-rule witnesses, and automatically derived generator candidates;
 - validated sentence-local dependency trees, CoNLL-U basic-tree checks, projectivity checks, and
@@ -44,13 +45,23 @@ normalization, the full TokensRegex textual language and composition stages, non
 enhanced dependency parsing, CoreNLP model formats, and production CLI/package ergonomics—is
 still incomplete.
 
-## Build and verify
+## Quick start
 
-Install [elan](https://github.com/leanprover/elan), then run:
+Install [Git](https://git-scm.com/) and [elan](https://github.com/leanprover/elan), then run:
 
-```text
+```bash
+git clone https://github.com/mepuka/lean4-nlp.git
+cd lean4-nlp
 lake build NlpCore
 lake build NlpTests
+```
+
+The repository pins Lean 4.33.1 in `lean-toolchain`; `elan` selects it automatically. `NlpCore`
+is the public library and `NlpTests` compiles the full theorem and regression suite.
+
+Optional native benchmark targets are separate from the library:
+
+```bash
 lake build parallel-benchmark
 lake build tokenize-benchmark
 lake build morphology-benchmark
@@ -62,9 +73,6 @@ lake build ner-benchmark
 lake build constituency-benchmark
 lake build regexner-benchmark
 ```
-
-`lake build` builds the public `NlpCore` library. `NlpTests` compiles the full theorem and
-regression suite. Benchmarks are intentionally separate from the library.
 
 ## A checked functional example
 
@@ -99,6 +107,14 @@ open Nlp Nlp.Tokenize
   (doc.forms, doc.sentEnd)
 -- (#["Hi", ".", "Bye", "!"], #[2, 4])
 ```
+
+In English/UD mode, the tokenizer recognizes a conservative source-preserving subset of web
+tokens before generic lexical rules: `http://`, `https://`, `ftp://`, and `www.` URLs; ASCII email
+addresses; and ASCII-bodied handles and hashtags with ASCII or fullwidth markers. Each recognizer
+can be disabled independently through `Tokenizer.config.web`, and successful tokens carry the
+specialized `.url`, `.email`, `.handle`, or `.hashtag` kind. This is not a claim of complete
+PTBTokenizer coverage; in particular, bare likely URLs and general Unicode hashtag bodies remain
+outside the current grammar.
 
 Pure kernels remain available under `Nlp.IO`, `Nlp.Parse`, `Nlp.Sequence`, and `Nlp.Eval`. For
 applications, `Nlp.NLP` is the preferred boundary: it provides typed failures, configuration,
@@ -164,8 +180,8 @@ combine typed regular predicates over token form, POS, lemma, and existing NER c
 exact-phrase Aho--Corasick lane. Arbitration is deterministic: higher priority, then longer span,
 then source rule order. Existing non-background runs require explicit overwrite permission and
 cannot be cut at sentence-local boundaries. `NLP.compileRegexNerModel`, `regexNer`, and
-`regexNerMany` add typed
-model failures, cancellation around bounded sentence kernels, length/candidate/work policy, and
+`regexNerMany` add typed model failures, cancellation around bounded sentence kernels,
+length/candidate/work policy, and
 stable token-weighted corpus concurrency. This is a typed first-order API; it does not parse the
 full TokensRegex DSL or implement capture groups, backreferences, composite/filter stages,
 actions, or bundled rule data.
@@ -211,7 +227,9 @@ The established algorithms are credited to their primary specifications:
   the Brooks and Ellis updates;
 - tokenizer behavior and compatibility vocabulary: Stanford's
   [tokenization](https://stanfordnlp.github.io/CoreNLP/tokenize.html) and
-  [sentence splitting](https://stanfordnlp.github.io/CoreNLP/ssplit.html) documentation;
+  [sentence splitting](https://stanfordnlp.github.io/CoreNLP/ssplit.html) documentation, with the
+  official [PTBLexer grammar](https://github.com/stanfordnlp/CoreNLP/blob/main/src/edu/stanford/nlp/process/PTBLexer.flex)
+  consulted only to identify compatibility boundaries and token categories;
 - flat NER token-label vocabulary and compatibility boundaries: Stanford's
   [CoreNLP NER](https://stanfordnlp.github.io/CoreNLP/ner.html) and
   [CRF NER](https://stanfordnlp.github.io/CoreNLP/tools_crf_ner.html) documentation;
@@ -241,6 +259,8 @@ Repository-specific implementation work is kept explicit in code and history:
 - imperative array kernels are related to functional folds by refinement theorems;
 - tokenizer spans use proof-carrying `String.Pos` endpoints, preserve exact source spelling, and
   avoid converting the whole input to a character list;
+- web-token recognizers scan source positions directly, retain a last-accepting endpoint, and use
+  exact nested-delimiter state to remove terminal prose punctuation without candidate substrings;
 - morphology keeps productive rules as invertible suffix relations with provenance, while the
   lexicon-filtered analyzer remains explicitly many-valued and makes no bijectivity claim;
 - typed score newtypes prevent accidental cross-domain arithmetic while retaining specialized hot
@@ -283,7 +303,9 @@ kernel-reduced proof terms.
 This is an independent implementation inspired by classical NLP tasks and published algorithm
 specifications. It is not affiliated with Stanford University or the Stanford CoreNLP project.
 The tokenizer follows documented behavior where implemented, but does not claim exact PTBTokenizer
-or CoreNLP compatibility. The dependency parser is the independent Eisner recurrence cited above,
+or CoreNLP compatibility. Its web-token grammar is an independently implemented conservative
+subset, not a port of Stanford's lexer tables. The dependency parser is the independent Eisner
+recurrence cited above,
 not CoreNLP's transition-based neural dependency parser, and cannot load its models. The named NER
 surface emits CoreNLP-style flat token classes, but its caller-supplied constrained HMM is not the
 CoreNLP CRF/rule pipeline and cannot load Stanford models. No CoreNLP source code, model files, or
