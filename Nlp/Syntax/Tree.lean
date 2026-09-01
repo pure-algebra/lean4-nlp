@@ -42,22 +42,34 @@ def width : Tree → Nat
   | .node _ child children =>
       children.attach.foldl (fun total ⟨tree, _⟩ => total + tree.width) child.width
 
+/-- Append the terminal yield to an existing output buffer in left-to-right order. -/
+def yieldWordsInto : Tree → Array Word → Array Word
+  | .leaf word, output => output.push word
+  | .node _ child children, output =>
+      children.attach.foldl
+        (fun words ⟨tree, _⟩ => tree.yieldWordsInto words)
+        (child.yieldWordsInto output)
+
 /-- Terminal yield in left-to-right order. -/
 def yieldWords (tree : Tree) : Array Word :=
-  tree.cata (fun word => #[word]) fun _ first rest =>
-    rest.foldl (fun words childWords => words ++ childWords) first
+  tree.yieldWordsInto #[]
+
+/-- Append preorder phrasal-node spans to an output buffer and return the final fencepost. -/
+def spansInto : Tree → Nat → Array (Cat × Nat × Nat) →
+    Array (Cat × Nat × Nat) × Nat
+  | .leaf _, start, output => (output, start + 1)
+  | .node cat child children, start, output =>
+      let rootIndex := output.size
+      let output := output.push (cat, start, start)
+      let (output, afterFirst) := child.spansInto start output
+      let (output, stop) := children.attach.foldl
+        (fun (accumulator, offset) ⟨tree, _⟩ => tree.spansInto offset accumulator)
+        (output, afterFirst)
+      (output.set! rootIndex (cat, start, stop), stop)
 
 /-- Preorder phrasal-node spans as `(category, start, stop)` fencepost triples. -/
-def spansFrom : Tree → Nat → Array (Cat × Nat × Nat) × Nat
-  | .leaf _, start => (#[], start + 1)
-  | .node cat child children, start =>
-      let (firstSpans, afterFirst) := spansFrom child start
-      let (childSpans, stop) := children.attach.foldl
-        (fun (acc, offset) ⟨tree, _⟩ =>
-          let (next, afterTree) := spansFrom tree offset
-          (acc ++ next, afterTree))
-        (firstSpans, afterFirst)
-      (#[(cat, start, stop)] ++ childSpans, stop)
+def spansFrom (tree : Tree) (start : Nat) : Array (Cat × Nat × Nat) × Nat :=
+  tree.spansInto start #[]
 
 /-- Compute all phrasal-node spans in one traversal, starting at fencepost `start`. -/
 def spans (tree : Tree) (start : Nat := 0) : Array (Cat × Nat × Nat) :=
