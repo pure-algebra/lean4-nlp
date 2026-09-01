@@ -8,8 +8,8 @@ open Nlp.Parse
 
 private def sentence : Array Tok := #[0, 1, 2, 3, 4]
 
-/-! The ambiguous G₁ grammar from `reference/deduction-rules.md` §7.1.
-    Nonterminals: S=0, NP=1, VP=2, PP=3, V=4, P=5. -/
+/-! A compact ambiguous attachment grammar with nonterminals
+    S=0, NP=1, VP=2, PP=3, V=4, and P=5. -/
 private def grammar : CNF Vit :=
   { bin :=
       #[ ⟨0, 1, 2, ⟨1.0⟩⟩,

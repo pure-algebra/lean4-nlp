@@ -5,7 +5,7 @@ import Nlp.Parse.OneBest
 
 `ckyOneBest` mirrors `ckyNaive`'s loop structure while additionally threading a backpointer
 array.  This module proves the oracle equation that the tests assert with `native_decide`
-(obligation VIT-1 in `docs/plan/proof-burden.md`): the first component of `ckyOneBest` is
+for the value-chart refinement: the first component of `ckyOneBest` is
 *exactly* `ckyNaive`'s chart, for every carrier and every `better` predicate.  No algebraic
 laws are used — the backpointer array is write-only with respect to the value chart, so the
 proof is pure loop bookkeeping.

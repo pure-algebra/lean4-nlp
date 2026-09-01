@@ -9,6 +9,10 @@ import Nlp.Sequence.Chain
 The model stores negative-log costs and projects directly into the existing min-plus `Chain`
 engine. Estimation uses add-k smoothing. Decoding keeps values and backpointers separate and is
 left-biased on exact ties, so repeated runs are deterministic.
+
+Algorithmic background: Rabiner, “A Tutorial on Hidden Markov Models and Selected Applications
+in Speech Recognition,” *Proceedings of the IEEE* 77(2), 1989
+(<https://doi.org/10.1109/5.18626>).
 -/
 
 namespace Nlp

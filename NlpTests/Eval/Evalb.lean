@@ -5,13 +5,13 @@ namespace NlpTests.Eval.Evalb
 open Nlp.Eval.Evalb
 
 private def sampleParams : String :=
-  include_str ".." / ".." / "reference" / "eval" / "evalb-sample.prm"
+  include_str ".." / "Fixtures" / "Evalb" / "sample.prm"
 
 private def sampleGold : String :=
-  include_str ".." / ".." / "reference" / "eval" / "evalb-sample.gld"
+  include_str ".." / "Fixtures" / "Evalb" / "sample.gld"
 
 private def sampleTest : String :=
-  include_str ".." / ".." / "reference" / "eval" / "evalb-sample.tst"
+  include_str ".." / "Fixtures" / "Evalb" / "sample.tst"
 
 private def sampleScore : Except Error CorpusScore := do
   let params ← parseParams sampleParams
@@ -47,7 +47,7 @@ private def expectedCutoff : Summary where
   words := 64
   correctTags := 62
 
-/-- Exact regression against the vendored upstream `evalb-sample.rsl`. -/
+/-- Exact regression against EVALB's public-domain sample corpus. -/
 private def sampleMatches : Bool :=
   match sampleScore with
   | .ok score => score.all == expectedAll && score.cutoff == expectedCutoff

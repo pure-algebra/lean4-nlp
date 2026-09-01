@@ -9,3 +9,4 @@ import NlpTests.Eval
 import NlpTests.EvalLemmas
 import NlpTests.Eval.Evalb
 import NlpTests.Integration
+import NlpTests.Readme

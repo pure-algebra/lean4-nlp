@@ -1,9 +1,12 @@
 vendor/
+reference/
 .lake/
 build/
 *.olean
+*.pdf
 
-# Local-only research artifacts identified by the Wave 1 licensing audit.
-reference/sequence-labeling/corenlp/english.conll.4class.distsim.prop
-reference/sequence-labeling/corenlp/english.muc.7class.distsim.prop
-reference/sequence-labeling/eval/conlleval.py
+.claude/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

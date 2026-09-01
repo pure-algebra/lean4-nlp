@@ -9,6 +9,11 @@ import Nlp.Parse.ChartLemmas
 
 `ckyNaive` is deliberately the obvious `O(n³ |P|)` implementation: each split scans every
 binary production.  It remains public as the correctness oracle for later indexed parsers.
+
+Algorithmic background: Goodman, “Semiring Parsing,” *Computational Linguistics* 25(4), 1999
+(<https://aclanthology.org/J99-4004/>), and Shieber, Schabes, and Pereira, “Principles and
+Implementation of Deductive Parsing,” 1995
+(<https://doi.org/10.1016/0743-1066(95)00035-I>).
 -/
 
 namespace Nlp.Parse

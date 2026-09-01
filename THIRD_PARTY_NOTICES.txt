@@ -1,0 +1,21 @@
+lean4-nlp third-party notices
+=============================
+
+EVALB regression fixtures
+-------------------------
+
+Files:
+  NlpTests/Fixtures/Evalb/sample.prm
+  NlpTests/Fixtures/Evalb/sample.gld
+  NlpTests/Fixtures/Evalb/sample.tst
+
+These are the sample inputs distributed with EVALB, originally by Satoshi
+Sekine and Michael Collins and subsequently updated by David Brooks and David
+Ellis. EVALB's authors released the package without copyright restriction and
+the updated package is distributed under the Unlicense. The complete notice is
+included at NlpTests/Fixtures/Evalb/LICENSE.txt.
+
+Upstream project: https://nlp.cs.nyu.edu/evalb/
+
+No Stanford CoreNLP source code, model files, or generated model artifacts are
+included in this repository.

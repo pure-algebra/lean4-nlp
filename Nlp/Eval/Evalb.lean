@@ -6,7 +6,8 @@ import Nlp.IO.Ptb
 /-!
 # EVALB-compatible constituency evaluation
 
-This module implements the scoring semantics of the vendored 2006 EVALB release. Parameters
+This module independently implements the scoring semantics of the 2006 EVALB release
+(Sekine, Collins, Brooks, and Ellis; <https://nlp.cs.nyu.edu/evalb/>). Parameters
 remain a small functional value; `CompiledParams` prepares hash tables once for corpus scoring.
 Sentence extraction is linear in tree size and bracket matching is expected linear time for the
 usual disjoint equivalence pairs. Crossing brackets retain EVALB's test-bracket-oriented

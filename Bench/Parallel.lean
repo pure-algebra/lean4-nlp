@@ -1,16 +1,16 @@
 import Nlp
 
 /-!
-# PROTOTYPE: coarse-grained parallel work over contiguous array chunks
+# Parallel scheduling benchmark
 
-This file is deliberately not part of `Nlp`.  It tests whether Lean's built-in `Task.spawn`
-is a viable execution boundary for independent, CPU-bound corpus work.  Promotion depends on
-correctness checks and a repeatable speedup over the serial checksum below.
+This standalone executable measures Lean's built-in `Task.spawn` on independent, CPU-bound corpus
+work. The production scheduler lives in `Nlp.Pipeline.Parallel`; this benchmark keeps a small
+checksum kernel and task-boundary floor for repeatable performance experiments.
 -/
 
-namespace ParallelPrototype
+namespace ParallelBenchmark
 
-/-- A half-open array range `[start, stop)`.  Only `chunkPlan` constructs these in the prototype. -/
+/-- A half-open array range `[start, stop)`. Only `chunkPlan` constructs benchmark chunks. -/
 structure Chunk where
   start : Nat
   stop : Nat
@@ -88,7 +88,7 @@ callers must treat `input` as read-only after crossing this boundary.
 Preferred effectful surface: eagerly start one `EIO` worker per chunk, preserve result order,
 and propagate the first error after cooperatively cancelling the remaining tasks.
 
-Long-running workers should poll `IO.checkCanceled` between bounded work units.  This prototype
+Long-running workers should poll `IO.checkCanceled` between bounded work units. This benchmark
 does not pretend that cancellation can preempt an arbitrary pure inner loop.
 -/
 def traverseChunks (config : Config) (input : Array α)
@@ -226,6 +226,6 @@ def main : IO Unit := do
   discard <| bench "serial tiny" 1000 tinyRef (serialChecksum 0)
   discard <| bench "dedicated x8 tiny" 50 tinyRef (parallelChecksum tinyConfig 0)
 
-end ParallelPrototype
+end ParallelBenchmark
 
-def main : IO Unit := ParallelPrototype.main
+def main : IO Unit := ParallelBenchmark.main

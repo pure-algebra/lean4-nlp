@@ -7,7 +7,7 @@ import Nlp.Grammar.IndexedCNF
 arrays.  Following the project cookbook (`Nlp.Sequence.ChainLemmas`,
 `Nlp.Core.Engine.InsideLemmas`), this module first refines the kernel into three plain folds
 (`ofCNF_eq_fold`), then proves the structural facts of obligation IDX-1a
-(`docs/plan/proof-burden.md`):
+needed by every indexed lookup:
 
 * `pairStart_size` — the boundary table has one slot per pair key plus a terminator;
 * `pairStart_getD` — slot `key` holds the prefix sum of the first `key + 1` bucket counters;

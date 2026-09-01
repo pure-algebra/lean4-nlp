@@ -3,7 +3,7 @@ import Nlp.IO.CoNLLU
 /-!
 # Tests for the CoNLL-U reader
 
-`native_decide` round trips on an embedded UD English-EWT sample, field-count error cases,
+`native_decide` round trips on authored synthetic sentences, field-count error cases,
 multiword-token and empty-node IDs, and direct uses of the proved round-trip theorems.
 -/
 
@@ -130,50 +130,28 @@ example : ({ mwtRow with form := "with\nnewline" } : CoNLLURow).wf = false := by
 example : ({ mwtRow with upos := .present "" (by decide) } : CoNLLURow).wf = false := by
   native_decide
 
-/-! ### Sentences: an embedded UD English-EWT sample
+/-! ### Sentences
 
-Two sentences from the Universal Dependencies English Web Treebank (UD_English-EWT r2.18),
-dev split, © the UD English-EWT annotators, licensed CC BY-SA 4.0 — see
-`reference/data/ud/UD_English-EWT/LICENSE.txt` and `PROVENANCE.md`. The second sentence
-contains the multiword token `1-2 Today's`.
+Two small, project-authored sentences exercise comments, sentence boundaries, morphological
+features, enhanced dependencies, and the multiword-token range `2-3 can't`.
 -/
 
-/-- Embedded two-sentence excerpt of `en_ewt-ud-dev.conllu` (attribution above). -/
+/-- Authored two-sentence CoNLL-U regression sample. -/
 def sample : String := String.intercalate "\n" [
-  "# sent_id = weblog-blogspot.com_nominations_20041117172713_ENG_20041117_172713-0001",
-  "# text = From the AP comes this story :",
-  "1\tFrom\tfrom\tADP\tIN\t_\t3\tcase\t3:case\t_",
-  "2\tthe\tthe\tDET\tDT\tDefinite=Def|PronType=Art\t3\tdet\t3:det\t_",
-  "3\tAP\tAP\tPROPN\tNNP\tNumber=Sing\t4\tobl\t4:obl:from\t_",
-  "4\tcomes\tcome\tVERB\tVBZ\tMood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin\t0\troot" ++
-    "\t0:root\t_",
-  "5\tthis\tthis\tDET\tDT\tNumber=Sing|PronType=Dem\t6\tdet\t6:det\t_",
-  "6\tstory\tstory\tNOUN\tNN\tNumber=Sing\t4\tnsubj\t4:nsubj\t_",
-  "7\t:\t:\tPUNCT\t:\t_\t4\tpunct\t4:punct\t_",
+  "# sent_id = synthetic-1",
+  "# text = Cats purr.",
+  "1\tCats\tcat\tNOUN\tNNS\tNumber=Plur\t2\tnsubj\t2:nsubj\t_",
+  "2\tpurr\tpurr\tVERB\tVBP\tMood=Ind|Tense=Pres\t0\troot\t0:root\tSpaceAfter=No",
+  "3\t.\t.\tPUNCT\t.\t_\t2\tpunct\t2:punct\t_",
   "",
-  "# sent_id = weblog-blogspot.com_gettingpolitical_20030906235000_ENG_20030906_235000-0003",
-  "# text = Today's incident proves that Sharon has lost his patience and his hope in peace.",
-  "1-2\tToday's\t_\t_\t_\t_\t_\t_\t_\t_",
-  "1\tToday\ttoday\tNOUN\tNN\tNumber=Sing\t3\tnmod:poss\t3:nmod:poss\t_",
-  "2\t's\t's\tPART\tPOS\t_\t1\tcase\t1:case\t_",
-  "3\tincident\tincident\tNOUN\tNN\tNumber=Sing\t4\tnsubj\t4:nsubj\t_",
-  "4\tproves\tprove\tVERB\tVBZ\tMood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin\t0" ++
-    "\troot\t0:root\t_",
-  "5\tthat\tthat\tSCONJ\tIN\t_\t8\tmark\t8:mark\t_",
-  "6\tSharon\tSharon\tPROPN\tNNP\tNumber=Sing\t8\tnsubj\t8:nsubj\t_",
-  "7\thas\thave\tAUX\tVBZ\tMood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin\t8\taux" ++
-    "\t8:aux\t_",
-  "8\tlost\tlose\tVERB\tVBN\tTense=Past|VerbForm=Part\t4\tccomp\t4:ccomp\t_",
-  "9\this\this\tPRON\tPRP$\tCase=Gen|Gender=Masc|Number=Sing|Person=3|Poss=Yes|PronType=Prs" ++
-    "\t10\tnmod:poss\t10:nmod:poss\t_",
-  "10\tpatience\tpatience\tNOUN\tNN\tNumber=Sing\t8\tobj\t8:obj\t_",
-  "11\tand\tand\tCCONJ\tCC\t_\t13\tcc\t13:cc\t_",
-  "12\this\this\tPRON\tPRP$\tCase=Gen|Gender=Masc|Number=Sing|Person=3|Poss=Yes|PronType=Prs" ++
-    "\t13\tnmod:poss\t13:nmod:poss\t_",
-  "13\thope\thope\tNOUN\tNN\tNumber=Sing\t10\tconj\t8:obj|10:conj:and\t_",
-  "14\tin\tin\tADP\tIN\t_\t15\tcase\t15:case\t_",
-  "15\tpeace\tpeace\tNOUN\tNN\tNumber=Sing\t13\tnmod\t13:nmod:in\tSpaceAfter=No",
-  "16\t.\t.\tPUNCT\t.\t_\t4\tpunct\t4:punct\t_",
+  "# sent_id = synthetic-2",
+  "# text = I can't wait.",
+  "1\tI\tI\tPRON\tPRP\tCase=Nom|Number=Sing|Person=1\t4\tnsubj\t4:nsubj\t_",
+  "2-3\tcan't\t_\t_\t_\t_\t_\t_\t_\t_",
+  "2\tca\tcan\tAUX\tMD\tVerbForm=Fin\t4\taux\t4:aux\t_",
+  "3\tn't\tnot\tPART\tRB\tPolarity=Neg\t4\tadvmod\t4:advmod\t_",
+  "4\twait\twait\tVERB\tVB\tVerbForm=Inf\t0\troot\t0:root\tSpaceAfter=No",
+  "5\t.\t.\tPUNCT\t.\t_\t4\tpunct\t4:punct\t_",
   ""]
 
 /-- A synthetic minimal sentence with an empty node, exercising `parseSentences` on the
@@ -186,16 +164,16 @@ def emptyNodeSample : String := String.intercalate "\n" [
   "3.1\tlikes\tlike\tVERB\tVBZ\t_\t_\t_\t2:conj\tCopyOf=2",
   ""]
 
-/- Comments are skipped, blank lines separate: two sentences of 7 and 17 rows. -/
-example : (parseSentences sample).toOption.map (·.map (·.size)) = some #[7, 17] := by
+/- Comments are skipped and blank lines separate two sentences of 3 and 6 rows. -/
+example : (parseSentences sample).toOption.map (·.map (·.size)) = some #[3, 6] := by
   native_decide
 
 /- The multiword-token and word IDs land where they should inside the parsed sample. -/
-example : (parseSentences sample).toOption.map (fun ss ↦ ss[1]![0]!.id)
-    = some (.range 1 2) := by native_decide
+example : (parseSentences sample).toOption.map (fun ss ↦ ss[1]![1]!.id)
+    = some (.range 2 3) := by native_decide
 
-example : (parseSentences sample).toOption.map (fun ss ↦ ss[0]![6]!.id)
-    = some (.word 7) := by native_decide
+example : (parseSentences sample).toOption.map (fun ss ↦ ss[0]![2]!.id)
+    = some (.word 3) := by native_decide
 
 /- Every row parsed from the sample is well-formed. -/
 example : (parseSentences sample).toOption.map (·.all (·.all (·.wf))) = some true := by

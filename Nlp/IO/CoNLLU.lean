@@ -4,13 +4,12 @@ import Nlp.IO.Fields
 # CoNLL-U sentence reader
 
 A total, spec'd reader and printer for the CoNLL-U format of Universal Dependencies
-(<https://universaldependencies.org/format.html>; local extract:
-`reference/data/formats/conllu.md`). A file is a sequence of sentence blocks separated by blank
+(<https://universaldependencies.org/format.html>). A file is a sequence of sentence blocks separated by blank
 lines; a block is `#`-prefixed comment lines followed by token lines; a token line is exactly ten
 tab-separated fields: ID, FORM, LEMMA, UPOS, XPOS, FEATS, HEAD, DEPREL, DEPS, MISC.
 
-This is layer 1 in the sense of `docs/plan/near-term.md` §2: rows are represented structurally
-faithfully — multiword-token ranges (`3-4`) and empty nodes (`3.1`) are constructors of
+Rows are represented structurally faithfully: multiword-token ranges (`3-4`) and empty nodes
+(`3.1`) are constructors of
 `CoNLLUId`, not dropped — and the reserved `_` of the seven optional columns is interpreted
 through the proved `OptionalField` codec of `Nlp.IO.Fields`. Interpretation into `Doc`/trees is a
 separate, later layer.
@@ -24,8 +23,8 @@ separate, later layer.
 
 The reverse composition `renderRow ∘ parseRow` is *not* the identity on raw lines: parsing
 canonicalizes numerals (`07` parses to the same ID as `7`), and the format itself is not injective
-on `_` (a literal-underscore LEMMA is indistinguishable from a missing one — the spec resolves
-this by fiat, see `reference/data/formats/conllu.md` §7). The sentence-level composition
+on `_` (a literal-underscore LEMMA is indistinguishable from a missing one because the format
+reserves `_` for absent values). The sentence-level composition
 `parseSentences ∘ renderSentences` also discards nothing (comments are already gone after
 `parseSentences`) and is exercised by `native_decide` tests in `NlpTests/IO/CoNLLU.lean`.
 -/

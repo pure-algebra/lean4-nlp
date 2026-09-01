@@ -1,5 +1,8 @@
-name = "nlp-core"
+name = "lean4-nlp"
 version = "0.1.0"
+description = "Algebra-first classical natural-language processing in Lean 4"
+keywords = ["nlp", "formal-methods", "dynamic-programming", "lean"]
+homepage = "https://github.com/mepuka/lean4-nlp"
 defaultTargets = ["NlpCore"]
 precompileModules = false
 
@@ -14,5 +17,5 @@ srcDir = "."
 roots = ["NlpTests"]
 
 [[lean_exe]]
-name = "parallel-prototype"
-root = "ParallelPrototypeMain"
+name = "parallel-benchmark"
+root = "Bench.Parallel"
