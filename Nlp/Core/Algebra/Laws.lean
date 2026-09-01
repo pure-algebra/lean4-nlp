@@ -73,6 +73,15 @@ class PathProperty (K : Type u) [Add K] : Prop where
 class Bounded (K : Type u) [SemiringOps K] : Prop where
   one_add : ∀ a : K, 1 + a = 1
 
+/-- Path-selecting addition is idempotent: `a + a` must return one of its two equal arguments. -/
+instance (priority := low) instIdemAddOfPathProperty [Add K] [PathProperty K] : IdemAdd K where
+  add_idem a := by rcases PathProperty.path a a with h | h <;> exact h
+
+/-- In a bounded semiring the unit also annihilates addition on the right. -/
+theorem Bounded.add_one [SemiringOps K] [LawfulChainDP K] [Bounded K] (a : K) :
+    a + 1 = 1 :=
+  (LawfulChainDP.add_comm a 1).trans (Bounded.one_add a)
+
 /-! ## Bridges to operation-indexed core and `Std` laws -/
 
 instance instAssociativeAdd [SemiringOps K] [LawfulChainDP K] :

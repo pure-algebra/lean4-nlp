@@ -56,4 +56,51 @@ def comp [Monoid0 M] [Monoid0 N] [Monoid0 P]
 
 end MonHom
 
+/-! ## The universal property of the free monoid
+
+`FreeMon A` really is free: with concatenation it is a monoid, `foldMap f` is a homomorphism
+extending `f`, homomorphisms commute with `foldMap`, and every homomorphism out of `FreeMon A`
+is a `foldMap`.  These four facts license every chunk-and-combine evaluation strategy: any
+per-chunk summary that is a homomorphism can be recombined in any bracketing.
+-/
+
+instance {A : Type u} : Monoid0 (FreeMon A) where
+  mul := List.append
+  one := []
+  mul_assoc := List.append_assoc
+  one_mul := List.nil_append
+  mul_one := List.append_nil
+
+@[simp] theorem foldMap_one {A : Type u} {M : Type v} [Monoid0 M] (f : A → M) :
+    foldMap f (1 : FreeMon A) = 1 := rfl
+
+@[simp] theorem foldMap_singleton {A : Type u} {M : Type v} [Monoid0 M] (f : A → M) (a : A) :
+    foldMap f [a] = f a := by
+  simp [foldMap, Monoid0.mul_one]
+
+/-- `foldMap f` packaged as the homomorphism extending `f` along singletons. -/
+def foldMapHom {A : Type u} {M : Type v} [Monoid0 M] (f : A → M) : MonHom (FreeMon A) M where
+  toFun := foldMap f
+  map_one := rfl
+  map_mul := foldMap_append f
+
+/-- Homomorphisms commute with `foldMap`: summarize chunks first or last, the result agrees. -/
+theorem MonHom.toFun_foldMap {A : Type u} {M : Type v} {N : Type w}
+    [Monoid0 M] [Monoid0 N] (h : MonHom M N) (f : A → M) (xs : FreeMon A) :
+    h.toFun (foldMap f xs) = foldMap (fun a ↦ h.toFun (f a)) xs := by
+  induction xs with
+  | nil => exact h.map_one
+  | cons a as ih => rw [foldMap, foldMap, h.map_mul, ih]
+
+/-- Uniqueness half of the universal property: a homomorphism out of the free monoid is
+determined by its values on singletons, and is a `foldMap`. -/
+theorem MonHom.eq_foldMap {A : Type u} {M : Type v} [Monoid0 M]
+    (h : MonHom (FreeMon A) M) (xs : FreeMon A) :
+    h.toFun xs = foldMap (fun a ↦ h.toFun [a]) xs := by
+  induction xs with
+  | nil => exact h.map_one
+  | cons a as ih =>
+    rw [foldMap, ← ih]
+    exact h.map_mul [a] as
+
 end Nlp

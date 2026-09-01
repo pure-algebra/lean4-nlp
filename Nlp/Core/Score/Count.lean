@@ -4,11 +4,16 @@ import Nlp.Core.Algebra.Laws
 
 namespace Nlp
 
-/-- Exact derivation counts, kept distinct from unrelated natural numbers. -/
+/--
+Exact derivation counts, kept distinct from unrelated natural numbers.
+
+`DecidableEq` deliberately supplies both `BEq` and `LawfulBEq`; a separately derived `BEq` would
+shadow that lawful instance.
+-/
 structure Count where
   ofNat ::
   toNat : Nat
-deriving BEq, DecidableEq, Repr, Inhabited, Hashable
+deriving DecidableEq, Repr, Inhabited, Hashable
 
 namespace Count
 

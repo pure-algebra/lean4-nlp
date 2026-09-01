@@ -38,4 +38,21 @@ example :
       foldMap AddNat.mk [1, 2] * foldMap AddNat.mk [3, 4] :=
   foldMap_append AddNat.mk [1, 2] [3, 4]
 
+/-- Doubling is a homomorphism of the additive monoid. -/
+private def double : MonHom AddNat AddNat where
+  toFun := fun x ↦ ⟨2 * x.value⟩
+  map_one := rfl
+  map_mul a b := congrArg AddNat.mk (Nat.mul_add 2 a.value b.value)
+
+/-- Naturality: summarize per element and combine, or combine and then map — same answer. -/
+example :
+    double.toFun (foldMap AddNat.mk [1, 2, 3]) =
+      foldMap (fun n ↦ double.toFun (AddNat.mk n)) [1, 2, 3] :=
+  MonHom.toFun_foldMap double AddNat.mk [1, 2, 3]
+
+/-- Uniqueness: every homomorphism out of the free monoid is a `foldMap`. -/
+example (h : MonHom (FreeMon Nat) AddNat) (xs : FreeMon Nat) :
+    h.toFun xs = foldMap (fun a ↦ h.toFun [a]) xs :=
+  MonHom.eq_foldMap h xs
+
 end NlpTests.Core.Algebra

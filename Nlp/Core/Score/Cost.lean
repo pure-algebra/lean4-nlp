@@ -1,4 +1,4 @@
-import Nlp.Core.Algebra.Ops
+import Nlp.Core.Algebra.Laws
 
 /-! # Min-plus cost scores -/
 
@@ -24,6 +24,20 @@ instance : StarOps Cost := ⟨fun _ ↦ ⟨0.0⟩⟩
 
 /-- The natural min-plus order: lower numeric costs are better. -/
 instance : LE Cost := ⟨fun a b ↦ b.toFloat ≤ a.toFloat⟩
+
+/-- Addition selects one of its arguments — provable with no `Float` arithmetic, because the
+`if` returns one branch's payload and structure eta restores the argument. -/
+instance : PathProperty Cost where
+  path a b := by
+    cases a with | ofFloat x => cases b with | ofFloat y =>
+      show Cost.ofFloat (if x ≤ y then x else y) = _ ∨
+        Cost.ofFloat (if x ≤ y then x else y) = _
+      split
+      · exact .inl rfl
+      · exact .inr rfl
+
+/-- Idempotence is inherited from the path property. -/
+instance : IdemAdd Cost := instIdemAddOfPathProperty
 
 end Cost
 

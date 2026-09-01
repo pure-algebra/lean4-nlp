@@ -4,11 +4,16 @@ import Nlp.Core.Algebra.Laws
 
 namespace Nlp
 
-/-- Recognition: alternative derivations use disjunction and composed steps use conjunction. -/
+/--
+Recognition: alternative derivations use disjunction and composed steps use conjunction.
+
+`DecidableEq` deliberately supplies both `BEq` and `LawfulBEq`; a separately derived `BEq` would
+shadow that lawful instance.
+-/
 structure Recog where
   ofBool ::
   toBool : Bool
-deriving BEq, DecidableEq, Repr, Inhabited, Hashable
+deriving DecidableEq, Repr, Inhabited, Hashable
 
 namespace Recog
 
@@ -45,6 +50,15 @@ instance : LawfulSemiring Recog where
   mul_assoc a b c := by
     cases a with | ofBool x => cases b with | ofBool y => cases c with
       | ofBool z => cases x <;> cases y <;> cases z <;> rfl
+
+instance : LawfulCommSemiring Recog where
+  mul_comm a b := by
+    cases a with | ofBool x => cases b with
+      | ofBool y => cases x <;> cases y <;> rfl
+
+instance : Bounded Recog where
+  one_add a := by
+    cases a with | ofBool x => cases x <;> rfl
 
 instance : IdemAdd Recog where
   add_idem a := by
