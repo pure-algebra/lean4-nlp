@@ -23,7 +23,7 @@ Unicode Character Database
 The tokenizer's Unicode decimal-number and whitespace tables are derived from
 the Unicode Character Database, version 17.0.0.
 
-Upstream data: https://www.unicode.org/Public/UCD/latest/ucd/
+Upstream data: https://www.unicode.org/Public/17.0.0/ucd/
 
 UNICODE LICENSE V3
 

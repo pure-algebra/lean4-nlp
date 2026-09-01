@@ -44,16 +44,27 @@ Lean's standard library and is pinned to Lean 4.33.1.
   projection, and functional plus effectful sentence/document/corpus APIs;
 - typed regular token languages, a bounded compiled Thompson NFA, exact Aho--Corasick phrase
   matching, and programmatic RegexNER with checked functional and effectful APIs;
+- exact `Rat`-valued ASCII and English cardinal/ordinal normalization with strict literal
+  diagnostics, bounded longest-leftmost extraction, proof-carrying source ranges, and functional
+  plus effectful document/corpus APIs;
+- checked preorder constituency arenas and a typed, binding-free Tregex-inspired query algebra
+  with eight structural relations, dual independently compiled linear evaluators, certified
+  matches, and functional plus effectful compile-once batch APIs;
+- checked dual-CSR dependency-graph indexes and a typed Semgrex-inspired direct-edge algebra with
+  lexical predicates, boolean composition, named-node bindings/backreferences, exact budgets, and
+  functional plus effectful graph/batch APIs;
 - CoNLL-U and Penn Treebank readers, bracket/chunk/tagging metrics, and EVALB-compatible scoring;
 - cancellation-aware, order-preserving bounded parallel corpus traversal with byte-weighted work
   planning for skewed corpora.
 
 The broader CoreNLP surface—full PTB tokenizer compatibility, morphological feature analysis,
-collocations, pretrained lexical/NER/dependency models, feature-rich CRF NER, numeric/time
-normalization, the full TokensRegex textual language and composition stages, enhanced dependency
-control/raising, relative-clause, ellipsis, outgoing-sharing, and Enhanced++ construction,
-CoreNLP model formats, and production CLI/package ergonomics—is
-still incomplete.
+collocations, pretrained lexical/NER/dependency models, feature-rich CRF NER, numeric
+normalization beyond exact cardinals/ordinals, temporal normalization (including dates, durations,
+sets, and reference-date resolution), money and percentage normalization,
+the full TokensRegex, Tregex, and Semgrex textual languages and composition stages, Tsurgeon and
+Ssurgeon rewriting, enhanced dependency control/raising, relative-clause, ellipsis,
+outgoing-sharing, and Enhanced++ construction, CoreNLP model formats, and production CLI/package
+ergonomics—is still incomplete.
 
 ## Quick start
 
@@ -95,6 +106,9 @@ lake build enhanced-dependency-benchmark
 lake build ner-benchmark
 lake build constituency-benchmark
 lake build regexner-benchmark
+lake build numeric-benchmark
+lake build tree-query-benchmark
+lake build graph-query-benchmark
 ```
 
 ## A checked functional example
@@ -237,6 +251,26 @@ stable token-weighted corpus concurrency. This is a typed first-order API; it do
 full TokensRegex DSL or implement capture groups, backreferences, composite/filter stages,
 actions, or bundled rule data.
 
+Exact numeric normalization is functional through `Normalize.Numeric.parseLiteral`,
+`parseTokens`, `normalizeRange`, and `normalizeDocument`. Values use Lean's exact `Rat`; results
+retain the unchanged token source, selected sentence ranges, and proof-carrying nonempty mention
+spans. The production grammar recognizes strict grouped/decimal/scientific ASCII literals,
+digit ordinals, and bounded English cardinals/ordinals. `NLP.normalizeNumbers` and
+`normalizeNumbersMany` add validate-once document semantics, cancellation, sentence-length
+policy, typed resource outcomes, and stable UTF-8-work-weighted batches. This is not SUTime:
+dates, times, durations, sets, reference-date resolution, money, percentages, and TIMEX output are
+not implemented.
+
+Programmatic tree queries use `Pattern.TreeQuery.compile`, `findAll`, and `execute`; the preferred
+effectful entry points are `NLP.matchTree`, `matchTrees`, and their explicit-policy variants.
+`TreeArena` flattens a `NamedTree` once into checked preorder, child, sibling, subtree, and yield
+columns. Evaluation compares an optimized table with a separately compiled direct-source
+denotation table; the latter is shared by every certified match. Programmatic graph queries use
+`Pattern.GraphQuery.executePure`, `NLP.queryGraph`, `queryGraphIndexWith`, and
+`queryGraphsMany`. The graph index retains both incoming and outgoing CSR views, and matches retain
+stable named-node bindings. These are typed subsets: they do not parse Stanford Tregex/Semgrex
+text, implement named edges, or perform Tsurgeon/Ssurgeon rewrites.
+
 The morphology model exposes ambiguity rather than hiding it, while `lemmaOrSelf` provides the
 conservative single-column policy used by the document annotator:
 
@@ -253,10 +287,16 @@ open Nlp
 
 ## Algorithm sources and implementation contributions
 
-The established algorithms are credited to their primary specifications:
+The established algorithms are credited to primary papers, authoritative specifications, and
+implementation references:
 
 - semiring parsing and generalized inside computation: Joshua Goodman,
   [“Semiring Parsing”](https://aclanthology.org/J99-4004/), 1999;
+- cubic context-free recognition: Tadao Kasami,
+  [“An Efficient Recognition and Syntax-Analysis Algorithm for Context-Free Languages”](https://hdl.handle.net/2142/74304),
+  1966, and Daniel Younger,
+  [“Recognition and Parsing of Context-Free Languages in Time n³”](https://doi.org/10.1016/S0019-9958(67)80007-X),
+  1967;
 - parsing as deduction: Stuart Shieber, Yves Schabes, and Fernando Pereira,
   [“Principles and Implementation of Deductive Parsing”](https://doi.org/10.1016/0743-1066(95)00035-I),
   1995;
@@ -309,9 +349,20 @@ The established algorithms are credited to their primary specifications:
 - rule-based NER and token-pattern compatibility vocabulary: Stanford's
   [RegexNER](https://stanfordnlp.github.io/CoreNLP/regexner.html) and
   [TokensRegex](https://stanfordnlp.github.io/CoreNLP/tokensregex.html) documentation;
+- deterministic numeric/temporal normalization architecture and compatibility boundary: Angel
+  Chang and Christopher Manning,
+  [“SUTIME: A Library for Recognizing and Normalizing Time Expressions”](https://nlp.stanford.edu/pubs/lrec2012-sutime.pdf),
+  2012;
+- tree-query and tree-rewrite language design: Roger Levy and Galen Andrew,
+  [“Tregex and Tsurgeon: tools for querying and manipulating tree data structures”](https://aclanthology.org/L06-1311/),
+  2006;
+- dependency-graph query and rewrite language design: John Bauer, Chloé Kiddon, Eric Yeh, Alex
+  Shan, and Christopher Manning,
+  [“Semgrex and Ssurgeon, Searching and Manipulating Dependency Graphs”](https://aclanthology.org/2023.tlt-1.7/),
+  2023;
 - Unicode decimal-number and whitespace classifications: the Unicode 17
-  [Derived General Category](https://www.unicode.org/Public/UCD/latest/ucd/extracted/DerivedGeneralCategory.txt)
-  and [property](https://www.unicode.org/Public/UCD/latest/ucd/PropList.txt) data files.
+  [Derived General Category](https://www.unicode.org/Public/17.0.0/ucd/extracted/DerivedGeneralCategory.txt)
+  and [property](https://www.unicode.org/Public/17.0.0/ucd/PropList.txt) data files.
 
 Repository-specific implementation work is kept explicit in code and history:
 
@@ -365,6 +416,18 @@ Repository-specific implementation work is kept explicit in code and history:
   logical clears, full-column coordinates, deterministic source ordinals, and no sentence slices;
 - mixed RegexNER arbitration retains original cross-lane rule order, protects complete existing
   entity runs, and exposes a checked sentence-range seam for cancellation between pure kernels;
+- numeric literals stream through strict grouped/decimal/scientific syntax into reduced exact
+  rationals without proportional temporary substrings; word-number recognition uses bounded
+  longest-leftmost extraction, a separately coded reference grammar, global-coordinate errors,
+  and exact first-crossing token/byte/digit/exponent/value/work budgets;
+- constituency queries flatten source trees with an explicit depth-bounded stack, evaluate every
+  relation through linear indexed columns, and compare an optimized postfix table with a second
+  independently compiled direct-source table; one shared certificate makes match sealing O(1)
+  while exact work/path/compared-byte/match policies cover both evaluators;
+- dependency-graph queries reuse the graph's incoming CSR and construct a canonical outgoing CSR
+  permutation, giving deterministic direct-edge traversal in either direction; bounded query
+  shape, nesting, lexical storage, state fanout, work, and result retention are checked before or
+  at their first allocation, and a slow incoming-row oracle cross-checks the optimized index;
 - the effectful scheduler supports count- and weight-balanced chunks, caps dedicated threads,
   suppresses nested fan-out, observes cooperative cancellation, and preserves input/error order.
 
@@ -397,7 +460,11 @@ generated model artifacts are included. The named constituency surface is an ind
 treebank-induced CKY/unary-restoration pipeline and cannot load Stanford parser models. No WordNet
 database or exception-list data is included. The RegexNER surface accepts typed programmatic
 patterns and exact phrases; it does not accept Stanford mapping files or claim full TokensRegex
-language, annotation, capture, or action compatibility.
+language, annotation, capture, or action compatibility. Numeric normalization independently
+implements exact cardinal/ordinal parsing and does not include SUTime rules, TIMEX semantics, or
+Stanford rule data. Tree and graph queries expose typed programmatic algebras inspired by the
+published Tregex and Semgrex task surfaces; they neither parse Stanford pattern syntax nor claim
+pattern-by-pattern compatibility, and no Tsurgeon/Ssurgeon mutation surface is present.
 
 The enhanced-dependency surface is an independently implemented, explicitly bounded word-node
 subset of the published UD transformations. It is not a port of CoreNLP's GPL converter and does
