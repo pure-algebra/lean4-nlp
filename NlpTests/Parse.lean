@@ -4,3 +4,4 @@ import NlpTests.Parse.CompiledCKY
 import NlpTests.Parse.OneBest
 import NlpTests.Parse.OneBestLemmas
 import NlpTests.Parse.Viterbi
+import NlpTests.Parse.Unary

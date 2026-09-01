@@ -5,3 +5,4 @@ import NlpTests.Grammar.Induce
 import NlpTests.Grammar.CompiledCNF
 import NlpTests.Grammar.IndexedCNF
 import NlpTests.Grammar.IndexedCNFLemmas
+import NlpTests.Grammar.Unary
