@@ -23,14 +23,32 @@ inductive Mode where
 inductive TokenKind where
   | word
   | number
+  | url
+  | email
+  | handle
+  | hashtag
   | punctuation
   | symbol
   | newline
   deriving Repr, DecidableEq, Inhabited, Hashable
 
+/-- Independent switches for the conservative source-preserving web-token recognizers. -/
+structure WebConfig where
+  /-- Recognize URLs with an explicit supported scheme or a case-insensitive `www.` prefix. -/
+  recognizeUrls : Bool := true
+  /-- Recognize conservative local-part-at-domain email addresses. -/
+  recognizeEmails : Bool := true
+  /-- Recognize social handles beginning with `@`. -/
+  recognizeHandles : Bool := true
+  /-- Recognize social hashtags beginning with `#`. -/
+  recognizeHashtags : Bool := true
+  deriving Repr, DecidableEq, Inhabited
+
 /-- Total tokenizer options; every combination has deterministic semantics. -/
 structure Config where
   mode : Mode := .englishUD
+  /-- Source-preserving recognizers that run before the generic English token rules. -/
+  web : WebConfig := {}
   /-- Emit each logical line break, with CRLF retained as one token, instead of discarding it. -/
   keepNewlines : Bool := false
   /-- In English/UD mode, split an in-word hyphen into a punctuation token. -/

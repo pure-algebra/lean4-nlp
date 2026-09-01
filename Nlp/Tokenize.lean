@@ -1,4 +1,5 @@
 import Nlp.Tokenize.Types
+import Nlp.Tokenize.Web
 import Nlp.Tokenize.Scanner
 import Nlp.Tokenize.Sentence
 

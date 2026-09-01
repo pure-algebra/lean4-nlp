@@ -1,4 +1,5 @@
 import Nlp.Tokenize.Types
+import Nlp.Tokenize.Web
 
 /-!
 # Streaming rule tokenizer
@@ -519,7 +520,7 @@ private def scanWhitespaceRun (text : String) (start : text.Pos)
   let stop := takeRest text start notAtEnd fun _ character ↦ !isWhitespace character
   ⟨stop.position, [Token.ofPositions start stop.position stop.after .word]⟩
 
-private def scanEnglish (config : Config) (text : String) (start : text.Pos)
+private def scanEnglishCore (config : Config) (text : String) (start : text.Pos)
     (notAtEnd : start ≠ text.endPos) (first : Char) : Scanned text :=
   if isDecimalDigit first then
     let stop := takeRest text start notAtEnd (numberContinues config text)
@@ -540,16 +541,36 @@ private theorem scanWhitespaceRun_piecesWF (text : String) (start : text.Pos)
     PiecesWF start scanned.stop scanned.pieces := by
   simp [scanWhitespaceRun, PiecesWF, Tokenization.ordered, Token.ofPositions]
 
-private theorem scanEnglish_piecesWF (config : Config) (text : String) (start : text.Pos)
+private theorem scanEnglishCore_piecesWF (config : Config) (text : String) (start : text.Pos)
     (notAtEnd : start ≠ text.endPos) (first : Char) :
-    let scanned := scanEnglish config text start notAtEnd first
+    let scanned := scanEnglishCore config text start notAtEnd first
     PiecesWF start scanned.stop scanned.pieces := by
-  unfold scanEnglish
+  unfold scanEnglishCore
   split
   · simp [PiecesWF, Tokenization.ordered, Token.ofPositions]
   · split
     · exact wordPieces_piecesWF config text start _ _
     · split <;> simp [PiecesWF, Tokenization.ordered, Token.ofPositions]
+
+/-- Give exact web tokens precedence over the generic English lexical rules. -/
+private def scanEnglish (config : Config) (text : String) (start : text.Pos)
+    (notAtEnd : start ≠ text.endPos) (first : Char) : Scanned text :=
+  match Web.match? config.web text start with
+  | some matched =>
+      ⟨matched.stop,
+        [Token.ofPositions start matched.stop matched.nonempty matched.kind.tokenKind]⟩
+  | none => scanEnglishCore config text start notAtEnd first
+
+private theorem scanEnglish_piecesWF (config : Config) (text : String) (start : text.Pos)
+    (notAtEnd : start ≠ text.endPos) (first : Char) :
+    let scanned := scanEnglish config text start notAtEnd first
+    PiecesWF start scanned.stop scanned.pieces := by
+  cases found : Web.match? config.web text start with
+  | none =>
+      simpa [scanEnglish, found] using
+        scanEnglishCore_piecesWF config text start notAtEnd first
+  | some matched =>
+      simp [scanEnglish, found, PiecesWF, Tokenization.ordered, Token.ofPositions]
 
 /-- Scan through ignored whitespace with an explicit iteration budget. -/
 private def scanNextAux (config : Config) (text : String) : Nat → text.Pos → Option (Scanned text)

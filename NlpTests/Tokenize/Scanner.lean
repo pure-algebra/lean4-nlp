@@ -39,6 +39,38 @@ example : forms "U.S. paid 1,234.50 at 12:30." =
     #["U.S.", "paid", "1,234.50", "at", "12:30", "."] := by
   native_decide
 
+private def webText : String :=
+  "Visit https://example.com/a?x=1&y=2. Mail a+b@example.co.uk, @lean_4 #Lean4!"
+
+example : forms webText =
+    #["Visit", "https://example.com/a?x=1&y=2", ".", "Mail", "a+b@example.co.uk", ",",
+      "@lean_4", "#Lean4", "!"] := by
+  native_decide
+
+example : kinds webText =
+    #[.word, .url, .punctuation, .word, .email, .punctuation, .handle, .hashtag,
+      .punctuation] := by
+  native_decide
+
+example : forms "Open https://example.com/café now." =
+    #["Open", "https://example.com/café", "now", "."] := by
+  native_decide
+
+private def noWeb : WebConfig := {
+  recognizeUrls := false
+  recognizeEmails := false
+  recognizeHandles := false
+  recognizeHashtags := false
+}
+
+example : forms "https://example.com" { web := noWeb } =
+    #["https", ":", "/", "/", "example.com"] := by
+  native_decide
+
+example : forms "https://example.com" { mode := .whitespace } =
+    #["https://example.com"] := by
+  native_decide
+
 example : forms "Wait... really?! -- yes." =
     #["Wait", "...", "really", "?!", "--", "yes", "."] := by
   native_decide

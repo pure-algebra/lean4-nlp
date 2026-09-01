@@ -23,6 +23,16 @@ private def processed : Doc [.sents, .tokens] :=
 example : processed.sentEnd = #[3, 6] := by native_decide
 example : processed.SemanticWF := by native_decide
 
+private def processedWeb : Doc [.sents, .tokens] :=
+  tokenizer.process "See https://example.com/search?q=why now. Next!"
+
+example : processedWeb.forms =
+    #["See", "https://example.com/search?q=why", "now", ".", "Next", "!"] := by
+  native_decide
+
+example : processedWeb.sentEnd = #[4, 6] := by native_decide
+example : processedWeb.SemanticWF := by native_decide
+
 private def rawWithStaleColumns : Doc [] :=
   { text := "fresh text", pos := #["STALE"], head := #[99], deprel := #["stale"] }
 
@@ -48,9 +58,10 @@ private def pureSnapshots (texts : Array String) : Array Snapshot :=
   texts.map fun text ↦ snapshot (tokenizer.process text)
 
 private def testSingle : IO Unit := do
-  match ← NLP.runIO {} (NLP.processText tokenizer "Hi. Bye!") with
+  let text := "See https://example.com/search?q=why now. Next!"
+  match ← NLP.runIO {} (NLP.processText tokenizer text) with
   | .ok doc =>
-      if snapshot doc != snapshot (tokenizer.process "Hi. Bye!") then
+      if snapshot doc != snapshot (tokenizer.process text) then
         throw <| IO.userError "effectful tokenization changed the pure result"
   | .error cause =>
       throw <| IO.userError s!"effectful tokenization failed: {cause}"

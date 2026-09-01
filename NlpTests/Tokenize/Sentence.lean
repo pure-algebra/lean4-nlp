@@ -25,6 +25,12 @@ example :
 
 example : ends "The U.S. policy changed." = #[5] := by native_decide
 
+example : ends "See https://example.com/search?q=why now." = #[4] := by
+  native_decide
+
+example : ends "Open https://example.com/a?x=1. Next." = #[3, 5] := by
+  native_decide
+
 example : ends "Hi.) Bye." = #[3, 5] := by native_decide
 
 example : ends "Hi. \"Bye.\"" = #[2, 6] := by native_decide
