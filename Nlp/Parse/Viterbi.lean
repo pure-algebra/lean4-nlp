@@ -62,7 +62,7 @@ end Derivation
     (candidateSplit == current.split.toNat && decide (candidateRule < current.rule.toNat))
 
 /-- Prefer a strictly larger score; on an exact nonzero tie, prefer the leftmost provenance. -/
-@[inline] private def shouldReplace (candidate current : Vit) (split rule : Nat)
+@[inline] def shouldReplace (candidate current : Vit) (split rule : Nat)
     (back : Back) : Bool :=
   decide (current.toFloat < candidate.toFloat) ||
     (candidate.toFloat == current.toFloat && !(candidate.toFloat == 0.0) &&
@@ -155,21 +155,21 @@ def ckyVit (indexed : IndexedCNF Vit) (words : Array Tok) : VitChart := Id.run d
       nonzero := nonzero.set! cell present
   return ⟨score, back⟩
 
-private def extractAux (indexed : IndexedCNF Vit) (words : Array Tok) (chart : VitChart) :
+private def extractAux (grammar : CNF Vit) (words : Array Tok) (chart : VitChart) :
     Nat → Nat → Nat → Nat → Option Derivation
   | 0, _, _, _ => none
   | fuel + 1, i, j, cat =>
-      if !(i < j && j ≤ words.size && cat < indexed.grammar.nNT) then none
+      if !(i < j && j ≤ words.size && cat < grammar.nNT) then none
       else
-        let target := Chart.cidx words.size indexed.grammar.nNT i j cat
+        let target := Chart.cidx words.size grammar.nNT i j cat
         let cellScore := chart.score.getD target 0
         if cellScore.toFloat == 0.0 then none
         else
           let provenance := chart.back.getD target default
           if j == i + 1 then
             let ruleIndex := provenance.rule.toNat
-            if ruleIndex < indexed.grammar.lex.size then
-              let rule := indexed.grammar.lex[ruleIndex]!
+            if ruleIndex < grammar.lex.size then
+              let rule := grammar.lex[ruleIndex]!
               if rule.lhs.toNat == cat && rule.tok == words[i]! &&
                   rule.w.toFloat == cellScore.toFloat then
                 some (.lexical ruleIndex rule.lhs words[i]!)
@@ -180,25 +180,41 @@ private def extractAux (indexed : IndexedCNF Vit) (words : Array Tok) (chart : V
             let split := provenance.split.toNat
             if !(i < split && split < j) then none
             else
-              match indexed.grammar.bin[ruleIndex]? with
+              match grammar.bin[ruleIndex]? with
               | none => none
               | some rule =>
                   if rule.lhs.toNat == cat &&
-                      IndexedCNF.ruleInBounds indexed.grammar.nNT rule then
+                      IndexedCNF.ruleInBounds grammar.nNT rule then
                     let leftIndex :=
-                      Chart.cidx words.size indexed.grammar.nNT i split rule.r1.toNat
+                      Chart.cidx words.size grammar.nNT i split rule.r1.toNat
                     let rightIndex :=
-                      Chart.cidx words.size indexed.grammar.nNT split j rule.r2.toNat
+                      Chart.cidx words.size grammar.nNT split j rule.r2.toNat
                     let expected :=
                       rule.w * chart.score.getD leftIndex 0 * chart.score.getD rightIndex 0
                     if !(expected.toFloat == cellScore.toFloat) then none
                     else
-                      match extractAux indexed words chart fuel i split rule.r1.toNat,
-                          extractAux indexed words chart fuel split j rule.r2.toNat with
+                      match extractAux grammar words chart fuel i split rule.r1.toNat,
+                          extractAux grammar words chart fuel split j rule.r2.toNat with
                       | some left, some right =>
                           some (.binary ruleIndex rule.lhs split left right)
                       | _, _ => none
                   else none
+
+/--
+Extract a source-preserving derivation against the exact `CNF` that owns the chart ordinals.
+
+This is the shared extraction seam for indexed and compiled Viterbi kernels. The chart shape, goal
+identifier, every backpointer, source rule, split, child score, and recomputed score are checked.
+Empty inputs, rejected parses, and malformed charts return `none`.
+-/
+def extractGrammarDerivation (grammar : CNF Vit) (words : Array Tok)
+    (chart : VitChart) : Option Derivation :=
+  let expectedSize := Chart.entryCount words.size grammar.nNT
+  if words.isEmpty || grammar.start.toNat ≥ grammar.nNT ||
+      chart.score.size != expectedSize || chart.back.size != expectedSize then
+    none
+  else
+    extractAux grammar words chart (words.size + 1) 0 words.size grammar.start.toNat
 
 /--
 Extract the source-preserving one-best derivation.
@@ -207,13 +223,7 @@ Returns `none` for an empty or rejected input and for every malformed chart/prov
 -/
 def extractDerivation (indexed : IndexedCNF Vit) (words : Array Tok)
     (chart : VitChart) : Option Derivation :=
-  let expectedSize := Chart.entryCount words.size indexed.grammar.nNT
-  if words.isEmpty || indexed.grammar.start.toNat ≥ indexed.grammar.nNT ||
-      chart.score.size != expectedSize || chart.back.size != expectedSize then
-    none
-  else
-    extractAux indexed words chart (words.size + 1) 0 words.size
-      indexed.grammar.start.toNat
+  extractGrammarDerivation indexed.grammar words chart
 
 /-- Extract the ordinary tree view of the source-preserving one-best derivation. -/
 def extractTree (indexed : IndexedCNF Vit) (words : Array Tok)

@@ -5,6 +5,7 @@ import Nlp.Parse.CompiledCKY
 import Nlp.Parse.OneBest
 import Nlp.Parse.OneBestLemmas
 import Nlp.Parse.Viterbi
+import Nlp.Parse.CompiledViterbi
 import Nlp.Parse.Unary
 
 /-! Constituency parsing charts and engines. -/
