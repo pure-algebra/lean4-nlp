@@ -31,6 +31,9 @@ Lean's standard library and is pinned to Lean 4.33.1.
   checked unlabeled/labeled attachment scoring with caller-defined punctuation policy;
 - semiring-generic single-root projective Eisner parsing, compiled labeled arc scores, an unboxed
   one-best min-cost kernel with exact backpointers, and functional plus effectful document APIs;
+- deterministic single-root nonprojective parsing with Chu--Liu--Edmonds and Tarjan's dense
+  quadratic refinement, checked reconstruction, exact label provenance, and functional plus
+  effectful document APIs;
 - typed BIO2 labels, a validated named HMM tagger, checked mention extraction, flat entity-class
   projection, and functional plus effectful sentence/document/corpus APIs;
 - typed regular token languages, a bounded compiled Thompson NFA, exact Aho--Corasick phrase
@@ -41,8 +44,8 @@ Lean's standard library and is pinned to Lean 4.33.1.
 
 The broader CoreNLP surface—full PTB tokenizer compatibility, morphological feature analysis,
 collocations, pretrained lexical/NER/dependency models, feature-rich CRF NER, numeric/time
-normalization, the full TokensRegex textual language and composition stages, nonprojective and
-enhanced dependency parsing, CoreNLP model formats, and production CLI/package ergonomics—is
+normalization, the full TokensRegex textual language and composition stages, enhanced dependency
+construction, CoreNLP model formats, and production CLI/package ergonomics—is
 still incomplete.
 
 ## Quick start
@@ -69,6 +72,7 @@ lake build pos-benchmark
 lake build unary-benchmark
 lake build compiled-viterbi-benchmark
 lake build dependency-benchmark
+lake build arborescence-benchmark
 lake build ner-benchmark
 lake build constituency-benchmark
 lake build regexner-benchmark
@@ -163,6 +167,18 @@ checked basic-tree semantics with sentence-local heads. This is a first-order, s
 projective, arc-factored parser; callers supply the scorer, and the repository ships no trained
 dependency model.
 
+Nonprojective dependency parsing reuses the same compiled caller-supplied arc scorer through
+`Dependency.Parser.parseNonprojective?`, its array and document variants, and
+`NLP.parseNonprojectiveDependencies`. Ordered effectful batches are exposed by
+`parseNonprojectiveDependenciesMany`. The decoder returns an exact one-root tree and permits
+crossing arcs. Its checked result retains original labels, exposes the optimized sum as Lean's
+exact `Dyadic`, and keeps the dependent-order IEEE-754 rendering as `reportedCost?`; reporting
+overflow does not discard the tree. Runtime policy charges variable-width integer limbs and
+rejects oversized quadratic workspaces before row allocation. This is still an arc-factored
+decoder, not a trained dependency model. Structural validity is proof-carrying; optimality is
+regression-checked against an independent exhaustive oracle rather than exposed as a Lean theorem
+today.
+
 Named-entity recognition is functional through `NerTagger.compile`, `estimate`, `tagForms`,
 `tagRange`, `classesForms`, and `extractMentions`. The private-constructor model validates exact
 case-sensitive vocabulary, a collision-free OOV identifier, numeric HMM storage, canonical BIO2
@@ -220,6 +236,22 @@ The established algorithms are credited to their primary specifications:
 - single-root projective dependency parsing: Jason Eisner,
   [“Three New Probabilistic Models for Dependency Parsing: An Exploration”](https://aclanthology.org/C96-1058/),
   1996;
+- shortest directed arborescences: Yoeng-Jin Chu and Tseng-Hong Liu,
+  [“On the Shortest Arborescence of a Directed Graph”](https://www.cs.cmu.edu/~15850/handouts/chu-liu_1965.pdf),
+  1965;
+- optimum directed branchings: Jack Edmonds,
+  [“Optimum Branchings”](https://doi.org/10.6028/jres.071B.032), 1967;
+- quadratic dense optimum-branching implementation: Robert Tarjan,
+  [“Finding Optimum Branchings”](https://doi.org/10.1002/net.3230070103), 1977;
+- corrected nested-contraction reconstruction: Paolo Camerini, Luigi Fratta, and Francesco
+  Maffioli, [“A Note on Finding Optimum Branchings”](https://doi.org/10.1002/net.3230090403),
+  1979;
+- graph-based dependency parsing reduction: Ryan McDonald, Fernando Pereira, Kiril Ribarov, and
+  Jan Hajič, [“Non-Projective Dependency Parsing using Spanning Tree Algorithms”](https://aclanthology.org/H05-1066/),
+  2005;
+- the exactly-one-root constraint for dependency trees: Ran Zmigrod, Tim Vieira, and Ryan
+  Cotterell, [“Please Mind the Root: Decoding Arborescences for Dependency Parsing”](https://aclanthology.org/2020.emnlp-main.390/),
+  2020;
 - English inflectional detachment and exception-first lexical validation: Princeton WordNet's
   [Morphy reference](https://wordnet.princeton.edu/documentation/morphy7wn);
 - CoNLL-U syntax: the [Universal Dependencies format specification](https://universaldependencies.org/format.html);
@@ -268,6 +300,12 @@ Repository-specific implementation work is kept explicit in code and history:
 - dependency label selection is compiled outside the cubic recurrence into compact arc choices;
   the specialized parser uses unboxed costs, deterministic split/root ties, checked extraction,
   and returns proof-carrying well-formed projective trees;
+- the nonprojective kernel stores dense rows by original source, contracts cycles with normalized
+  reduced weights, and reconstructs nested contractions through a compact forest; graph-wide
+  binary scaling keeps ordinary exact weights in fast `Int` cells, while limb-aware workspace
+  accounting bounds adversarial exponent spans; a lexicographic root-arc-count/exact-dyadic weight
+  enforces exactly one root without repeated decoding, rounded reductions, or a floating-point
+  big-M constant;
 - BIO2-constrained decoding compiles legal predecessors into ascending CSR buckets and uses flat
   backpointers plus separate reachability bits so overflowed costs remain distinguishable from
   impossible paths;
@@ -304,9 +342,9 @@ This is an independent implementation inspired by classical NLP tasks and publis
 specifications. It is not affiliated with Stanford University or the Stanford CoreNLP project.
 The tokenizer follows documented behavior where implemented, but does not claim exact PTBTokenizer
 or CoreNLP compatibility. Its web-token grammar is an independently implemented conservative
-subset, not a port of Stanford's lexer tables. The dependency parser is the independent Eisner
-recurrence cited above,
-not CoreNLP's transition-based neural dependency parser, and cannot load its models. The named NER
+subset, not a port of Stanford's lexer tables. The dependency parsers are independent
+implementations of Eisner and Chu--Liu--Edmonds with Tarjan's dense refinement, not CoreNLP's
+transition-based neural dependency parser, and cannot load its models. The named NER
 surface emits CoreNLP-style flat token classes, but its caller-supplied constrained HMM is not the
 CoreNLP CRF/rule pipeline and cannot load Stanford models. No CoreNLP source code, model files, or
 generated model artifacts are included. The named constituency surface is an independent
