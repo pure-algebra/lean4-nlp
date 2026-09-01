@@ -7,5 +7,8 @@ import Nlp.Grammar.InduceLemmas
 import Nlp.Grammar.CompiledCNF
 import Nlp.Grammar.IndexedCNF
 import Nlp.Grammar.IndexedCNFLemmas
+import Nlp.Grammar.Unary
+import Nlp.Grammar.UnaryRestore
+import Nlp.Grammar.UnaryLemmas
 
 /-! Specification and implementation grammar representations. -/
