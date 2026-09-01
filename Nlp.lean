@@ -9,6 +9,7 @@ import Nlp.Dependency
 import Nlp.Tokenize
 import Nlp.Morphology
 import Nlp.Normalize
+import Nlp.Model
 import Nlp.IO
 import Nlp.Eval
 import Nlp.Eval.Dependency

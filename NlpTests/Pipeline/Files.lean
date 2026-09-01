@@ -24,6 +24,36 @@ def testAtomicWriteRead : IO Unit := withTempDir fun directory ↦ do
         throw <| IO.userError "atomic write leaked temporary artifacts"
   | _ => throw <| IO.userError "atomic write/read round trip failed"
 
+private def testBinaryRead : IO Unit := withTempDir fun directory ↦ do
+  let target := directory / "model.bin"
+  let payload := ByteArray.mk #[0, 255, 1, 128]
+  IO.FS.writeBinFile target payload
+  match ← NLP.runIO {} (NLP.readBytes target) with
+  | .ok found =>
+      if found != payload then
+        throw <| IO.userError "binary read changed payload bytes"
+  | .error _ => throw <| IO.userError "binary read failed"
+
+  match ← NLP.runIO {} (NLP.readBytesWithLimit target payload.size) with
+  | .ok found =>
+      if found != payload then
+        throw <| IO.userError "bounded binary read changed payload bytes"
+  | .error _ => throw <| IO.userError "exact bounded binary read failed"
+
+  match ← NLP.runIO {} (NLP.readBytesWithLimit target (payload.size - 1)) with
+  | .error (.invalidInput location why) =>
+      unless location == target.toString && why.contains "configured limit is 3" do
+        throw <| IO.userError "bounded binary read lost its limit diagnostic"
+  | _ => throw <| IO.userError "one-short binary limit was accepted"
+
+  let emptyTarget := directory / "empty.bin"
+  IO.FS.writeBinFile emptyTarget {}
+  match ← NLP.runIO {} (NLP.readBytesWithLimit emptyTarget 0) with
+  | .ok found =>
+      unless found.isEmpty do
+        throw <| IO.userError "zero-limit empty binary read returned bytes"
+  | .error _ => throw <| IO.userError "zero-limit empty binary read failed"
+
 def testExistingTargetPreserved : IO Unit := withTempDir fun directory ↦ do
   let target := directory / "existing.txt"
   IO.FS.writeFile target "old"
@@ -76,6 +106,7 @@ def testCommitLinearization : IO Unit := withTempDir fun directory ↦ do
   | _ => throw <| IO.userError "successful commit was misreported as cancellation"
 
 #eval testAtomicWriteRead
+#eval testBinaryRead
 #eval testExistingTargetPreserved
 #eval testFromIOError
 #eval testCancelledBeforeWrite

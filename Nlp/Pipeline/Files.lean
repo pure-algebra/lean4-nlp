@@ -21,6 +21,64 @@ def readFile (path : System.FilePath) : NLP String := do
   checkCancelled
   return contents
 
+/--
+Read one complete binary file with cooperative checks around the blocking operation.
+
+This low-level operation has no byte cap. Model and untrusted-input loaders should use
+`readBytesWithLimit` so the limit is enforced while the file is being read.
+-/
+def readBytes (path : System.FilePath) : NLP ByteArray := do
+  checkCancelled
+  let contents ← fromIO <| IO.FS.readBinFile path
+  checkCancelled
+  return contents
+
+private inductive BoundedReadResult where
+  | ok (bytes : ByteArray)
+  | tooLarge (observed : Nat)
+  | cancelled (reason : Std.CancellationReason)
+
+private def readBytesWithLimitIO (cancellation : Std.CancellationContext)
+    (path : System.FilePath) (maxBytes : Nat) : IO BoundedReadResult := do
+  let metadata ← path.metadata
+  let advertised := metadata.byteSize.toNat
+  if maxBytes < advertised then
+    return .tooLarge advertised
+  IO.FS.withFile path .read fun handle ↦ do
+    let mut bytes := ByteArray.emptyWithCapacity (min advertised maxBytes)
+    while true do
+      if let some reason := ← cancellation.getCancellationReason then
+        return .cancelled reason
+      if ← IO.checkCanceled then
+        return .cancelled .cancel
+      let remaining := maxBytes - bytes.size
+      let request := min 65_536 (remaining + 1)
+      let chunk ← handle.read (USize.ofNat request)
+      if chunk.isEmpty then
+        break
+      if remaining < chunk.size then
+        return .tooLarge (bytes.size + chunk.size)
+      bytes := bytes ++ chunk
+    return .ok bytes
+
+/--
+Read at most `maxBytes`, rejecting oversized files before or during allocation.
+
+The metadata check is only an early rejection. Reads remain capped at `maxBytes + 1`, so a file
+that grows after metadata lookup cannot bypass the limit. Cancellation is checked between chunks.
+-/
+def readBytesWithLimit (path : System.FilePath) (maxBytes : Nat) : NLP ByteArray := do
+  checkCancelled
+  let cancellation := (← read).cancellation
+  match ← fromIO <| readBytesWithLimitIO cancellation path maxBytes with
+  | .ok bytes =>
+      checkCancelled
+      return bytes
+  | .tooLarge observed =>
+      throw <| .invalidInput path.toString
+        s!"binary file has at least {observed} bytes; configured limit is {maxBytes}"
+  | .cancelled reason => throw <| .cancelled reason
+
 /-- Deterministic paths used by the create-new atomic writer. -/
 structure AtomicWritePaths where
   directory : System.FilePath

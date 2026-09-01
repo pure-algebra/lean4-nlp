@@ -75,3 +75,7 @@ root = "Bench.TreeQuery"
 [[lean_exe]]
 name = "graph-query-benchmark"
 root = "Bench.GraphQuery"
+
+[[lean_exe]]
+name = "tokenregex-benchmark"
+root = "Bench.TokenRegex"

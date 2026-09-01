@@ -20,6 +20,7 @@ import Nlp.Pipeline.EnhancedDependency
 import Nlp.Pipeline.Ner
 import Nlp.Pipeline.Numeric
 import Nlp.Pipeline.RegexNer
+import Nlp.Pipeline.TokenRegex
 import Nlp.Pipeline.Tree
 import Nlp.Pipeline.Graph
 import Nlp.Pipeline.Evalb
