@@ -35,3 +35,7 @@ root = "Bench.Pos"
 [[lean_exe]]
 name = "unary-benchmark"
 root = "Bench.Unary"
+
+[[lean_exe]]
+name = "compiled-viterbi-benchmark"
+root = "Bench.CompiledViterbi"
