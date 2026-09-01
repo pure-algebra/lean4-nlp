@@ -18,7 +18,10 @@ import Nlp.Pipeline.Dependency
 import Nlp.Pipeline.NonprojectiveDependency
 import Nlp.Pipeline.EnhancedDependency
 import Nlp.Pipeline.Ner
+import Nlp.Pipeline.Numeric
 import Nlp.Pipeline.RegexNer
+import Nlp.Pipeline.Tree
+import Nlp.Pipeline.Graph
 import Nlp.Pipeline.Evalb
 
 /-!

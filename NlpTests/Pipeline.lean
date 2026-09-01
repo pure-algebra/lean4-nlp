@@ -17,5 +17,8 @@ import NlpTests.Pipeline.Dependency
 import NlpTests.Pipeline.NonprojectiveDependency
 import NlpTests.Pipeline.EnhancedDependency
 import NlpTests.Pipeline.Ner
+import NlpTests.Pipeline.Numeric
 import NlpTests.Pipeline.RegexNer
+import NlpTests.Pipeline.Tree
+import NlpTests.Pipeline.Graph
 import NlpTests.Pipeline.Evalb
