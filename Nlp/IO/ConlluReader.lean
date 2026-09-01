@@ -1,4 +1,5 @@
 import Nlp.Core.Doc
+import Nlp.Core.Data.Dependency
 import Nlp.IO.Fields
 
 /-!
@@ -71,6 +72,12 @@ inductive ConlluError where
   | missingHead (row : Nat)
   | malformedHead (row : Nat) (value : String)
   | headOutOfRange (row head wordCount : Nat)
+  | selfHead (row dependent : Nat)
+  | noRoot
+  | multipleRoots (firstRow firstDependent secondRow secondDependent : Nat)
+  | dependencyCycle (row dependent head : Nat)
+  | dependencyRelationCount (expected found : Nat)
+  | rootRelationMismatch (row dependent head : Nat) (relation : String)
   | missingUpos (row : Nat)
   | missingDeprel (row : Nat)
   | noWordRows
@@ -209,7 +216,6 @@ def toDoc (sentence : ConlluSentence) :
   let mut heads : Array Nat := #[]
   let mut relations : Array String := #[]
   let mut wordIds : Array (Nat × Nat) := #[]
-  let mut sourcedHeads : Array (Nat × Nat) := #[]
   let mut rowNumber := 0
   for row in sentence.rows do
     rowNumber := rowNumber + 1
@@ -243,7 +249,6 @@ def toDoc (sentence : ConlluSentence) :
       heads := heads.push head
       relations := relations.push deprel
       wordIds := wordIds.push (rowNumber, wordId)
-      sourcedHeads := sourcedHeads.push (rowNumber, head)
   if forms.isEmpty then
     throw .noWordRows
   let mut expectedWordId := 1
@@ -252,9 +257,29 @@ def toDoc (sentence : ConlluSentence) :
       expectedWordId := expectedWordId + 1
     else
       throw (.nonsequentialWordId sourceRow expectedWordId wordId)
-  for (sourceRow, head) in sourcedHeads do
-    unless head ≤ forms.size do
-      throw (.headOutOfRange sourceRow head forms.size)
+  let sourceRowOf := fun dependent : Nat ↦
+    (wordIds[dependent - 1]?).map (fun source ↦ source.1) |>.getD dependent
+  match Dependency.checkSentenceTree heads with
+  | .ok () => pure ()
+  | .error (.headOutOfRange dependent head wordCount) =>
+    throw (.headOutOfRange (sourceRowOf dependent) head wordCount)
+  | .error (.selfHead dependent) =>
+    throw (.selfHead (sourceRowOf dependent) dependent)
+  | .error .noRoot => throw .noRoot
+  | .error (.multipleRoots first second) =>
+    throw (.multipleRoots (sourceRowOf first) first (sourceRowOf second) second)
+  | .error (.cycle dependent head) =>
+    throw (.dependencyCycle (sourceRowOf dependent) dependent head)
+  | .error (.relationCount expected found) =>
+    throw (.dependencyRelationCount expected found)
+  for index in [0:heads.size] do
+    let dependent := index + 1
+    let head := heads[index]!
+    let relation := relations[index]!
+    let headIsRoot := head == 0
+    let relationIsRoot := relation == "root"
+    unless headIsRoot == relationIsRoot do
+      throw (.rootRelationMismatch (sourceRowOf dependent) dependent head relation)
   let document : Doc [.dep, .lemma, .pos, .sents, .tokens] :=
     { text, spans, forms, sentEnd := #[forms.size], pos := positions, lemma := lemmas,
       head := heads, deprel := relations }

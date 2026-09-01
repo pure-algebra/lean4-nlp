@@ -3,6 +3,7 @@ import Nlp.IO.ConlluReader
 namespace NlpTests.IO.ConlluReader
 
 open Nlp.IO
+open Nlp.Dependency
 
 private def row : ConlluRow :=
   { id := "1",
@@ -159,6 +160,121 @@ private def headOutOfRange : Bool :=
   | .error _ => false
 
 #guard headOutOfRange
+
+private def selfHead : Bool :=
+  let input := "1\tdog\tdog\tNOUN\tNN\t_\t1\tdep\t_\t_\n\n"
+  match parseConllu input with
+  | .ok sentences =>
+    match sentences.toList with
+    | [sentence] =>
+      match sentence.toDoc with
+      | .error (.selfHead 1 1) => true
+      | _ => false
+    | _ => false
+  | .error _ => false
+
+#guard selfHead
+
+private def noRoot : Bool :=
+  let input :=
+    "1\tone\tone\tNOUN\tNN\t_\t2\tdep\t_\t_\n" ++
+      "2\ttwo\ttwo\tNOUN\tNN\t_\t1\tdep\t_\t_\n\n"
+  match parseConllu input with
+  | .ok sentences =>
+    match sentences.toList with
+    | [sentence] =>
+      match sentence.toDoc with
+      | .error .noRoot => true
+      | _ => false
+    | _ => false
+  | .error _ => false
+
+#guard noRoot
+
+private def multipleRoots : Bool :=
+  let input :=
+    "1\tone\tone\tNOUN\tNN\t_\t0\troot\t_\t_\n" ++
+      "2\ttwo\ttwo\tNOUN\tNN\t_\t0\troot\t_\t_\n\n"
+  match parseConllu input with
+  | .ok sentences =>
+    match sentences.toList with
+    | [sentence] =>
+      match sentence.toDoc with
+      | .error (.multipleRoots 1 1 2 2) => true
+      | _ => false
+    | _ => false
+  | .error _ => false
+
+#guard multipleRoots
+
+private def disconnectedCycle : Bool :=
+  let input :=
+    "1\tone\tone\tNOUN\tNN\t_\t0\troot\t_\t_\n" ++
+      "2\ttwo\ttwo\tNOUN\tNN\t_\t3\tdep\t_\t_\n" ++
+      "3\tthree\tthree\tNOUN\tNN\t_\t2\tdep\t_\t_\n\n"
+  match parseConllu input with
+  | .ok sentences =>
+    match sentences.toList with
+    | [sentence] =>
+      match sentence.toDoc with
+      | .error (.dependencyCycle 3 3 2) => true
+      | _ => false
+    | _ => false
+  | .error _ => false
+
+#guard disconnectedCycle
+
+private def rootHeadNeedsRootRelation : Bool :=
+  let input := "1\tdog\tdog\tNOUN\tNN\t_\t0\tdep\t_\t_\n\n"
+  match parseConllu input with
+  | .ok sentences =>
+    match sentences.toList with
+    | [sentence] =>
+      match sentence.toDoc with
+      | .error (.rootRelationMismatch 1 1 0 "dep") => true
+      | _ => false
+    | _ => false
+  | .error _ => false
+
+#guard rootHeadNeedsRootRelation
+
+private def rootRelationNeedsRootHead : Bool :=
+  let input :=
+    "1\tone\tone\tNOUN\tNN\t_\t2\troot\t_\t_\n" ++
+      "2\ttwo\ttwo\tNOUN\tNN\t_\t0\troot\t_\t_\n\n"
+  match parseConllu input with
+  | .ok sentences =>
+    match sentences.toList with
+    | [sentence] =>
+      match sentence.toDoc with
+      | .error (.rootRelationMismatch 1 1 2 "root") => true
+      | _ => false
+    | _ => false
+  | .error _ => false
+
+#guard rootRelationNeedsRootHead
+
+private def validNonprojective : Bool :=
+  let input :=
+    "1\tone\tone\tNOUN\tNN\t_\t3\tdep\t_\t_\n" ++
+      "2\ttwo\ttwo\tNOUN\tNN\t_\t4\tdep\t_\t_\n" ++
+      "3\tthree\tthree\tNOUN\tNN\t_\t0\troot\t_\t_\n" ++
+      "4\tfour\tfour\tNOUN\tNN\t_\t3\tdep\t_\t_\n\n"
+  match parseConllu input with
+  | .ok sentences =>
+    match sentences.toList with
+    | [sentence] =>
+      match sentence.toDoc with
+      | .ok document =>
+        document.head == #[3, 4, 0, 3] &&
+          match checkProjective document.head with
+          | .error (.crossing 1 3 2 4) => true
+          | _ => false
+      | .error _ => false
+    | _ => false
+  | .error _ => false
+
+#guard validNonprojective
 
 private def nonsequentialWordId : Bool :=
   let input :=
