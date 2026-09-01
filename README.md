@@ -32,14 +32,17 @@ Lean's standard library and is pinned to Lean 4.33.1.
   one-best min-cost kernel with exact backpointers, and functional plus effectful document APIs;
 - typed BIO2 labels, a validated named HMM tagger, checked mention extraction, flat entity-class
   projection, and functional plus effectful sentence/document/corpus APIs;
+- typed regular token languages, a bounded compiled Thompson NFA, exact Aho--Corasick phrase
+  matching, and programmatic RegexNER with checked functional and effectful APIs;
 - CoNLL-U and Penn Treebank readers, bracket/chunk/tagging metrics, and EVALB-compatible scoring;
 - cancellation-aware, order-preserving bounded parallel corpus traversal with byte-weighted work
   planning for skewed corpora.
 
 The broader CoreNLP surface—full PTB tokenizer compatibility, morphological feature analysis,
 collocations, pretrained lexical/NER/dependency models, feature-rich CRF NER, numeric/time
-normalization, RegexNER/TokensRegex rule composition, nonprojective and enhanced dependency
-parsing, CoreNLP model formats, and production CLI/package ergonomics—is still incomplete.
+normalization, the full TokensRegex textual language and composition stages, nonprojective and
+enhanced dependency parsing, CoreNLP model formats, and production CLI/package ergonomics—is
+still incomplete.
 
 ## Build and verify
 
@@ -57,6 +60,7 @@ lake build compiled-viterbi-benchmark
 lake build dependency-benchmark
 lake build ner-benchmark
 lake build constituency-benchmark
+lake build regexner-benchmark
 ```
 
 `lake build` builds the public `NlpCore` library. `NlpTests` compiles the full theorem and
@@ -154,6 +158,18 @@ ordered bounded-corpus boundaries. Sentence spans reset the sequence model indep
 a caller-trained constrained generative HMM baseline, not Stanford's feature-rich CRF/rule
 combiner, pretrained models, or model format.
 
+Programmatic RegexNER is functional through `RegexNerModel.compile`, `tagDocument`, and the
+checked, model-branded `validateDocument`/`rewriteRange`/`assembleDocument` session seam. Rules
+combine typed regular predicates over token form, POS, lemma, and existing NER columns with an
+exact-phrase Aho--Corasick lane. Arbitration is deterministic: higher priority, then longer span,
+then source rule order. Existing non-background runs require explicit overwrite permission and
+cannot be cut at sentence-local boundaries. `NLP.compileRegexNerModel`, `regexNer`, and
+`regexNerMany` add typed
+model failures, cancellation around bounded sentence kernels, length/candidate/work policy, and
+stable token-weighted corpus concurrency. This is a typed first-order API; it does not parse the
+full TokensRegex DSL or implement capture groups, backreferences, composite/filter stages,
+actions, or bundled rule data.
+
 The morphology model exposes ambiguity rather than hiding it, while `lemmaOrSelf` provides the
 conservative single-column policy used by the document annotator:
 
@@ -179,6 +195,12 @@ The established algorithms are credited to their primary specifications:
   1995;
 - hidden Markov estimation and decoding: Lawrence Rabiner,
   [“A Tutorial on Hidden Markov Models”](https://doi.org/10.1109/5.18626), 1989;
+- regular-expression compilation: Ken Thompson,
+  [“Programming Techniques: Regular Expression Search Algorithm”](https://doi.org/10.1145/363347.363387),
+  1968;
+- multi-pattern exact string matching: Alfred Aho and Margaret Corasick,
+  [“Efficient String Matching: An Aid to Bibliographic Search”](https://doi.org/10.1145/360825.360855),
+  1975;
 - single-root projective dependency parsing: Jason Eisner,
   [“Three New Probabilistic Models for Dependency Parsing: An Exploration”](https://aclanthology.org/C96-1058/),
   1996;
@@ -193,6 +215,9 @@ The established algorithms are credited to their primary specifications:
 - flat NER token-label vocabulary and compatibility boundaries: Stanford's
   [CoreNLP NER](https://stanfordnlp.github.io/CoreNLP/ner.html) and
   [CRF NER](https://stanfordnlp.github.io/CoreNLP/tools_crf_ner.html) documentation;
+- rule-based NER and token-pattern compatibility vocabulary: Stanford's
+  [RegexNER](https://stanfordnlp.github.io/CoreNLP/regexner.html) and
+  [TokensRegex](https://stanfordnlp.github.io/CoreNLP/tokensregex.html) documentation;
 - Unicode decimal-number and whitespace classifications: the Unicode 17
   [Derived General Category](https://www.unicode.org/Public/UCD/latest/ucd/extracted/DerivedGeneralCategory.txt)
   and [property](https://www.unicode.org/Public/UCD/latest/ucd/PropList.txt) data files.
@@ -229,6 +254,13 @@ Repository-specific implementation work is kept explicit in code and history:
 - named NER compilation rejects vocabulary/OOV collisions and the reserved `B-O`/`I-O` entity,
   while encode-once document inference uses a checked class-only scan to avoid unused rich-output
   allocation;
+- exact phrase rules share prefixes in an Aho--Corasick trie whose failure and dictionary links
+  enumerate suffix-rule outputs, while typed regular rules compile to bounded CSR Thompson
+  automata;
+- regular matching uses one generation-stamped membership array per public search, constant-time
+  logical clears, full-column coordinates, deterministic source ordinals, and no sentence slices;
+- mixed RegexNER arbitration retains original cross-lane rule order, protects complete existing
+  entity runs, and exposes a checked sentence-range seam for cancellation between pure kernels;
 - the effectful scheduler supports count- and weight-balanced chunks, caps dedicated threads,
   suppresses nested fan-out, observes cooperative cancellation, and preserves input/error order.
 
@@ -257,7 +289,9 @@ surface emits CoreNLP-style flat token classes, but its caller-supplied constrai
 CoreNLP CRF/rule pipeline and cannot load Stanford models. No CoreNLP source code, model files, or
 generated model artifacts are included. The named constituency surface is an independent
 treebank-induced CKY/unary-restoration pipeline and cannot load Stanford parser models. No WordNet
-database or exception-list data is included.
+database or exception-list data is included. The RegexNER surface accepts typed programmatic
+patterns and exact phrases; it does not accept Stanford mapping files or claim full TokensRegex
+language, annotation, capture, or action compatibility.
 
 ## Licensing
 
