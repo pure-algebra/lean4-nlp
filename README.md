@@ -14,8 +14,8 @@ Lean's standard library and is pinned to Lean 4.33.1.
 - typed algebra and distinct score domains for recognition, counting, probability, Viterbi, and
   min-plus costs;
 - immutable annotation layers and both functional and effectful annotator surfaces;
-- CFG/CNF structures, lossless tree binarization, dense treebank induction, and checked grammar
-  compilation;
+- CFG/CNF structures, lossless tree binarization, dense treebank induction, bounded acyclic unary
+  elimination with exact rule provenance, and checked grammar compilation;
 - semiring-generic CKY, compiled sparse/dense CKY, one-best extraction, and source-preserving
   Viterbi derivations;
 - linear-chain dynamic programming, a smoothed bigram HMM, and a validated named POS tagger with
@@ -43,6 +43,7 @@ lake build parallel-benchmark
 lake build tokenize-benchmark
 lake build morphology-benchmark
 lake build pos-benchmark
+lake build unary-benchmark
 ```
 
 `lake build` builds the public `NlpCore` library. `NlpTests` compiles the full theorem and
@@ -145,6 +146,9 @@ Repository-specific implementation work is kept explicit in code and history:
 - lexical buckets and nonzero-cell lists avoid scanning irrelevant productions and chart rows;
 - width-major triangular charts use flat storage with checked layout theorems;
 - Viterbi backpointers preserve source production ordinals and deterministic tie-breaking;
+- acyclic unary elimination shares path prefixes in a reverse-linked arena, retains distinct
+  positional derivations, enforces explicit expansion budgets, and restores exact unary chains
+  from emitted rule ordinals;
 - named POS model compilation validates dense HMM storage, numeric costs, vocabularies, packed
   emission identifiers, and a collision-free OOV observation before the decoding hot path;
 - sentence-aware POS annotation resets HMM state at declared boundaries and falls back to a
