@@ -15,6 +15,8 @@ structure Config where
   numThreads : Nat := 1
   /-- Maximum token length accepted by bounded model kernels. -/
   maxLen : Nat := 400
+  /-- Maximum dense chart entries allocated by one policy-aware parse. -/
+  maxChartEntries : Nat := 8_388_608
   /-- Minimum item count in each chunk of a count-balanced traversal. -/
   parallelMinGrain : Nat := 65536
   /-- Minimum normalized aggregate weight in each chunk of a weighted traversal. -/
@@ -60,6 +62,7 @@ abbrev NLP := ReaderT Env (EIO Fail)
 /-- Why an individual sentence was intentionally not analysed. -/
 inductive SkipReason where
   | tooLong (tokens limit : Nat)
+  | chartTooLarge (entries limit : Nat)
   | outOfVocabulary
   | disabled
   | timedOut

@@ -1,14 +1,14 @@
-import Nlp.Parse.Viterbi
+import Nlp.Parse.CompiledViterbi
 import Nlp.Pipeline.Parse
 
 /-!
 # Effectful one-best constituency parsing
 
-`ViterbiModel` is the reusable validated boundary around the existing pure Viterbi parser. The
-functional constructor validates a `CNF Vit` and its numerical domain before deriving its pair
-index. The `NLP` facade adds typed failures, cancellation, sentence-length policy, and bounded
-ordered batches. Callers that deliberately need operational behavior for noncanonical floats can
-still use `Nlp.Parse.Viterbi.ckyVit` directly.
+`ViterbiModel` is the reusable validated boundary around the adaptive compiled Viterbi parser.
+The functional constructor validates a `CNF Vit` and its numerical domain while selecting a dense
+or sparse pair index. The `NLP` facade adds typed failures, cancellation, sentence-length policy,
+and bounded ordered batches. Callers that deliberately need operational behavior for
+noncanonical floats can still use the lower-level pure kernels directly.
 -/
 
 namespace Nlp
@@ -27,7 +27,7 @@ deriving Repr
 structure ViterbiModel where
   private mk ::
   /-- Immutable parser data shared by all sentence analyses. -/
-  indexed : IndexedCNF Vit
+  compiled : CompiledCNF Vit
 
 namespace ViterbiModel
 
@@ -48,23 +48,33 @@ private def validateWeights (grammar : CNF Vit) : Except ViterbiCompileError Uni
     unless isCanonicalWeight value do
       throw <| .invalidLexicalWeight source value value.toBits
 
-/--
-Validate a Viterbi grammar and derive the reusable pure parser model.
-
-Every rule weight is checked exactly once before index construction. This certifies finite values
-in `[0, 1]` and canonical positive zero. Full-derivation underflow remains an operational property
-of floating-point multiplication and is reported by `parseTree` as `Analysis.noAnalysis`.
--/
-def compile (grammar : CNF Vit) : Except ViterbiCompileError ViterbiModel := do
-  match CompiledCNF.validate grammar with
-  | .ok () => pure ()
-  | .error cause => throw <| .grammar cause
+/-- Validate a Viterbi grammar and derive an adaptive reusable parser model. -/
+def compileWith (config : CompileConfig) (grammar : CNF Vit) :
+    Except ViterbiCompileError ViterbiModel := do
+  let checked ←
+    match CompiledCNF.checkSource grammar with
+    | .ok value => pure value
+    | .error cause => throw <| .grammar cause
   validateWeights grammar
-  return ⟨grammar.index⟩
+  return ⟨CompiledCNF.compileCheckedWith config checked⟩
+
+/-- Validate and compile with the production adaptive-index threshold. -/
+@[inline] def compile (grammar : CNF Vit) : Except ViterbiCompileError ViterbiModel :=
+  compileWith CompileConfig.default grammar
 
 /-- The validated source grammar retained by the parser model. -/
 @[inline] def grammar (model : ViterbiModel) : CNF Vit :=
-  model.indexed.grammar
+  model.compiled.grammar
+
+/-- Produce the exact one-best derivation through the pure functional model API. -/
+def derivation? (model : ViterbiModel) (words : Array Tok) :
+    Option Parse.Viterbi.Derivation :=
+  let chart := Parse.Viterbi.ckyVitCompiled model.compiled words
+  Parse.Viterbi.extractCompiledDerivation model.compiled words chart
+
+/-- Produce the ordinary one-best tree through the pure functional model API. -/
+def parse? (model : ViterbiModel) (words : Array Tok) : Option Tree :=
+  (model.derivation? words).map Parse.Viterbi.Derivation.toTree
 
 end ViterbiModel
 
@@ -103,16 +113,21 @@ def viterbiCompileErrorToFail (source : String) : ViterbiCompileError → Fail
   | .grammar cause => compileErrorToFail source cause
   | error => .modelCorrupt source (viterbiCompileErrorDetail error)
 
-/-- Compile a validated reusable Viterbi model from an already decoded grammar value. -/
-def compileViterbiModel (grammar : CNF Vit)
+/-- Compile a reusable Viterbi model with an explicit adaptive-index configuration. -/
+def compileViterbiModelWith (config : CompileConfig) (grammar : CNF Vit)
     (source : String := "in-memory Viterbi grammar") : NLP ViterbiModel := do
   checkCancelled
   let model ←
-    match ViterbiModel.compile grammar with
+    match ViterbiModel.compileWith config grammar with
     | .ok value => pure value
     | .error error => throw <| viterbiCompileErrorToFail source error
   checkCancelled
   return model
+
+/-- Compile a validated reusable Viterbi model with the production index threshold. -/
+@[inline] def compileViterbiModel (grammar : CNF Vit)
+    (source : String := "in-memory Viterbi grammar") : NLP ViterbiModel :=
+  compileViterbiModelWith CompileConfig.default grammar source
 
 /--
 Produce the one-best tree for a sentence through the preferred effectful API.
@@ -122,11 +137,10 @@ checked before policy inspection and after the pure chart-and-extraction boundar
 -/
 def parseTree (model : ViterbiModel) (words : Array Tok) : NLP (Analysis Tree) := do
   checkCancelled
-  let limit := (← read).config.maxLen
-  if limit < words.size then
-    return .skipped (.tooLong words.size limit)
-  let chart := Parse.Viterbi.ckyVit model.indexed words
-  let tree := Parse.Viterbi.extractTree model.indexed words chart
+  let config := (← read).config
+  if let some reason := chartSkipReason? config model.grammar.nNT words.size then
+    return .skipped reason
+  let tree := model.parse? words
   checkCancelled
   match tree with
   | some value => return .ok value

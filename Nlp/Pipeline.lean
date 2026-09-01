@@ -12,6 +12,7 @@ import Nlp.Pipeline.English
 import Nlp.Pipeline.Corpora
 import Nlp.Pipeline.Parse
 import Nlp.Pipeline.Viterbi
+import Nlp.Pipeline.Unary
 import Nlp.Pipeline.Evalb
 
 /-!

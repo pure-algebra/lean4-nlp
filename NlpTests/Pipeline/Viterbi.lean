@@ -16,6 +16,12 @@ private def invalidGrammar : CNF Vit :=
     start := 0
     nNT := 3 }
 
+private def largeSparseGrammar : CNF Vit :=
+  { bin := #[]
+    lex := #[⟨0, 10, ⟨1.0⟩⟩]
+    start := 0
+    nNT := 1_000_000 }
+
 private def withBinaryWeight (value : Float) : CNF Vit :=
   { grammar with bin := #[⟨0, 1, 2, ⟨value⟩⟩] }
 
@@ -47,6 +53,22 @@ def testTooLong : IO Unit := do
   with
   | .ok (.skipped (.tooLong 2 1)) => pure ()
   | _ => throw <| IO.userError "Viterbi parser did not preserve the length policy as data"
+
+def testChartBudget : IO Unit := do
+  match ← NLP.runIO { maxChartEntries := 1 } do
+    let model ← NLP.compileViterbiModel grammar
+    NLP.parseTree model #[10, 11]
+  with
+  | .ok (.skipped (.chartTooLarge 9 1)) => pure ()
+  | _ => throw <| IO.userError "Viterbi parser entered a chart beyond its allocation budget"
+
+def testLargeSparseChartBudget : IO Unit := do
+  match ← NLP.runIO { maxChartEntries := 100 } do
+    let model ← NLP.compileViterbiModel largeSparseGrammar
+    NLP.parseTree model #[10]
+  with
+  | .ok (.skipped (.chartTooLarge 1_000_000 100)) => pure ()
+  | _ => throw <| IO.userError "large sparse model bypassed the dense-chart allocation policy"
 
 def testInvalidGrammarSource : IO Unit := do
   match ← NLP.runIO {} <| NLP.compileViterbiModel invalidGrammar "models/parser.cnf" with
@@ -116,6 +138,8 @@ def testCancelled : IO Unit := do
 #eval testPureCompileAndTree
 #eval testNoAnalysis
 #eval testTooLong
+#eval testChartBudget
+#eval testLargeSparseChartBudget
 #eval testInvalidGrammarSource
 #eval testOrderedBatch
 #eval testInvalidWeights

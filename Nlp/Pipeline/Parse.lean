@@ -11,6 +11,17 @@ kernel remain pure in `Nlp.CompiledCNF` and `Nlp.Parse`.
 
 namespace Nlp.NLP
 
+/-- Apply sentence-length and dense-chart allocation policy before entering a parser kernel. -/
+@[inline] def chartSkipReason? (config : Config) (nNT tokens : Nat) : Option SkipReason :=
+  if config.maxLen < tokens then
+    some (.tooLong tokens config.maxLen)
+  else
+    let entries := Parse.Chart.entryCount tokens nNT
+    if config.maxChartEntries < entries then
+      some (.chartTooLarge entries config.maxChartEntries)
+    else
+      none
+
 /-- Human-readable context for a grammar compilation failure. -/
 def compileErrorDetail : CompileError → String
   | .nonterminalCapacity count =>
@@ -78,9 +89,9 @@ def parseSentence {K : Type} [SemiringOps K] [LawfulSemiringMinusAssoc K]
     [Inhabited K] [BEq K] [LawfulBEq K]
     (compiled : CompiledCNF K) (words : Array Tok) : NLP (Analysis K) := do
   NLP.checkCancelled
-  let limit := (← read).config.maxLen
-  if limit < words.size then
-    return .skipped (.tooLong words.size limit)
+  let config := (← read).config
+  if let some reason := chartSkipReason? config compiled.grammar.nNT words.size then
+    return .skipped reason
   let value := Parse.ckyCompiledGoal compiled words
   NLP.checkCancelled
   if value == 0 then return .noAnalysis else return .ok value

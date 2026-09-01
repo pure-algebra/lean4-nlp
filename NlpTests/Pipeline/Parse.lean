@@ -65,6 +65,14 @@ def testLengthPolicy : IO Unit := do
   | .ok (.skipped (.tooLong 2 1)) => pure ()
   | _ => throw <| IO.userError "sentence length policy was not preserved as analysis data"
 
+def testChartBudget : IO Unit := do
+  match ← NLP.runIO { maxChartEntries := 1 } do
+    let compiled ← NLP.compileGrammar countGrammar
+    NLP.parseSentence compiled #[7, 8]
+  with
+  | .ok (.skipped (.chartTooLarge 9 1)) => pure ()
+  | _ => throw <| IO.userError "parser entered a chart beyond its allocation budget"
+
 def testOrderedBatch : IO Unit := do
   let sentences : Array (Array Tok) := #[#[7, 8], #[7, 99], #[7, 8, 8], #[7, 8]]
   let config : Config := {
@@ -97,6 +105,7 @@ def testCancelled : IO Unit := do
 #eval testExplicitCompileConfig
 #eval testSingleRecogNoAnalysis
 #eval testLengthPolicy
+#eval testChartBudget
 #eval testOrderedBatch
 #eval testCancelled
 
