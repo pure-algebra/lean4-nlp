@@ -27,3 +27,7 @@ root = "Bench.Tokenize"
 [[lean_exe]]
 name = "morphology-benchmark"
 root = "Bench.Morphology"
+
+[[lean_exe]]
+name = "pos-benchmark"
+root = "Bench.Pos"
