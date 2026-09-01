@@ -24,13 +24,20 @@ Lean's standard library and is pinned to Lean 4.33.1.
   whitespace mode, configurable English/UD-style rules, and deterministic sentence splitting;
 - POS-aware English lemmatization with exception-first lexical validation, ambiguous candidate
   analyses, reversible suffix-rule witnesses, and automatically derived generator candidates;
+- validated sentence-local dependency trees, CoNLL-U basic-tree checks, projectivity checks, and
+  checked unlabeled/labeled attachment scoring with caller-defined punctuation policy;
+- semiring-generic single-root projective Eisner parsing, compiled labeled arc scores, an unboxed
+  one-best min-cost kernel with exact backpointers, and functional plus effectful document APIs;
+- typed BIO2 labels and a compiled BIO-constrained HMM decoder with range decoding and
+  deterministic tie-breaking;
 - CoNLL-U and Penn Treebank readers, bracket/chunk/tagging metrics, and EVALB-compatible scoring;
 - cancellation-aware, order-preserving bounded parallel corpus traversal with byte-weighted work
   planning for skewed corpora.
 
 The broader CoreNLP surface—full PTB tokenizer compatibility, morphological feature analysis,
-collocations, pretrained lexical data, NER, dependency parsing, model formats, and production
-CLI/package ergonomics—is still incomplete.
+collocations, pretrained lexical/NER/dependency models, trainable NER features, nonprojective and
+enhanced dependency parsing, CoreNLP model formats, and production CLI/package ergonomics—is still
+incomplete.
 
 ## Build and verify
 
@@ -45,6 +52,7 @@ lake build morphology-benchmark
 lake build pos-benchmark
 lake build unary-benchmark
 lake build compiled-viterbi-benchmark
+lake build dependency-benchmark
 ```
 
 `lake build` builds the public `NlpCore` library. `NlpTests` compiles the full theorem and
@@ -112,6 +120,20 @@ cancellation, sentence-length policy, and ordered bounded batches. The adaptive 
 uses a compact sparse pair index for large nonterminal spaces while preserving exact emitted rule
 ordinals for restoration.
 
+Projective dependency parsing is functional through `Dependency.Parser.compile`, `parse?`, and
+`parseDocument?`. `NLP.compileDependencyParser`, `parseDependencies`, and
+`parseDependenciesMany` add typed failures, cancellation, sentence-length and chart-allocation
+policy, and ordered work-weighted batches. Parser scorers receive sentence-local CoNLL-U
+coordinates: artificial root `0` and real tokens `1 .. n`. Successful document results carry
+checked basic-tree semantics with sentence-local heads. This is a first-order, single-root,
+projective, arc-factored parser; callers supply the scorer, and the repository ships no trained
+dependency model.
+
+BIO2 foundations are available through `Sequence.Bio` and `Sequence.ConstrainedHmm`. The latter
+validates the numeric HMM and tag inventory once, compiles legal predecessor buckets, and exposes
+whole-sequence and zero-copy range decoding. It is a constrained generative baseline, not a
+pretrained or feature-rich CoreNLP NER model.
+
 The morphology model exposes ambiguity rather than hiding it, while `lemmaOrSelf` provides the
 conservative single-column policy used by the document annotator:
 
@@ -137,6 +159,9 @@ The established algorithms are credited to their primary specifications:
   1995;
 - hidden Markov estimation and decoding: Lawrence Rabiner,
   [“A Tutorial on Hidden Markov Models”](https://doi.org/10.1109/5.18626), 1989;
+- single-root projective dependency parsing: Jason Eisner,
+  [“Three New Probabilistic Models for Dependency Parsing: An Exploration”](https://aclanthology.org/C96-1058/),
+  1996;
 - English inflectional detachment and exception-first lexical validation: Princeton WordNet's
   [Morphy reference](https://wordnet.princeton.edu/documentation/morphy7wn);
 - CoNLL-U syntax: the [Universal Dependencies format specification](https://universaldependencies.org/format.html);
@@ -169,6 +194,12 @@ Repository-specific implementation work is kept explicit in code and history:
   lexicon-filtered analyzer remains explicitly many-valued and makes no bijectivity claim;
 - typed score newtypes prevent accidental cross-domain arithmetic while retaining specialized hot
   paths;
+- dependency label selection is compiled outside the cubic recurrence into compact arc choices;
+  the specialized parser uses unboxed costs, deterministic split/root ties, checked extraction,
+  and returns proof-carrying well-formed projective trees;
+- BIO2-constrained decoding compiles legal predecessors into ascending CSR buckets and uses flat
+  backpointers plus separate reachability bits so overflowed costs remain distinguishable from
+  impossible paths;
 - the effectful scheduler supports count- and weight-balanced chunks, caps dedicated threads,
   suppresses nested fan-out, observes cooperative cancellation, and preserves input/error order.
 
@@ -191,8 +222,10 @@ kernel-reduced proof terms.
 This is an independent implementation inspired by classical NLP tasks and published algorithm
 specifications. It is not affiliated with Stanford University or the Stanford CoreNLP project.
 The tokenizer follows documented behavior where implemented, but does not claim exact PTBTokenizer
-or CoreNLP compatibility. No CoreNLP source code, model files, or generated model artifacts are
-included. No WordNet database or exception-list data is included.
+or CoreNLP compatibility. The dependency parser is the independent Eisner recurrence cited above,
+not CoreNLP's transition-based neural dependency parser, and cannot load its models. No CoreNLP
+source code, model files, or generated model artifacts are included. No WordNet database or
+exception-list data is included.
 
 ## Licensing
 
