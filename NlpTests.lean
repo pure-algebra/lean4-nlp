@@ -5,6 +5,7 @@ import NlpTests.Grammar
 import NlpTests.Parse
 import NlpTests.Sequence
 import NlpTests.Tokenize
+import NlpTests.Morphology
 import NlpTests.IO
 import NlpTests.Eval
 import NlpTests.EvalLemmas
