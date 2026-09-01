@@ -49,6 +49,10 @@ name = "arborescence-benchmark"
 root = "Bench.Arborescence"
 
 [[lean_exe]]
+name = "enhanced-dependency-benchmark"
+root = "Bench.EnhancedDependency"
+
+[[lean_exe]]
 name = "ner-benchmark"
 root = "Bench.Ner"
 
