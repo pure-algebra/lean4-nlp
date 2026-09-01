@@ -15,6 +15,7 @@ import NlpTests.Pipeline.Unary
 import NlpTests.Pipeline.Constituency
 import NlpTests.Pipeline.Dependency
 import NlpTests.Pipeline.NonprojectiveDependency
+import NlpTests.Pipeline.EnhancedDependency
 import NlpTests.Pipeline.Ner
 import NlpTests.Pipeline.RegexNer
 import NlpTests.Pipeline.Evalb

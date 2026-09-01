@@ -17,6 +17,12 @@ structure Config where
   maxLen : Nat := 400
   /-- Maximum dense chart entries allocated by one policy-aware parse. -/
   maxChartEntries : Nat := 8_388_608
+  /-- Maximum retained edges in one enhanced-dependency sentence graph. -/
+  maxGraphEdges : Nat := 1_048_576
+  /-- Maximum derived candidates planned for one enhanced-dependency sentence. -/
+  maxGraphCandidates : Nat := 1_048_576
+  /-- Maximum UTF-8 bytes retained in derived enhanced-dependency labels per sentence. -/
+  maxGraphLexicalBytes : Nat := 16_777_216
   /-- Minimum item count in each chunk of a count-balanced traversal. -/
   parallelMinGrain : Nat := 65536
   /-- Minimum normalized aggregate weight in each chunk of a weighted traversal. -/
@@ -65,6 +71,7 @@ inductive SkipReason where
   | chartTooLarge (entries limit : Nat)
   | workLimit (required limit : Nat)
   | candidateLimit (required limit : Nat)
+  | byteLimit (required limit : Nat)
   | outOfVocabulary
   | disabled
   | timedOut
