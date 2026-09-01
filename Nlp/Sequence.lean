@@ -6,5 +6,6 @@ import Nlp.Sequence.PosTagger
 import Nlp.Sequence.PosTaggerLemmas
 import Nlp.Sequence.Bio
 import Nlp.Sequence.ConstrainedHmm
+import Nlp.Sequence.NerTagger
 
 /-! Classical sequence-model dynamic programming. -/
