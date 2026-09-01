@@ -4,10 +4,12 @@ import NlpTests.Syntax
 import NlpTests.Grammar
 import NlpTests.Parse
 import NlpTests.Sequence
+import NlpTests.Dependency
 import NlpTests.Tokenize
 import NlpTests.Morphology
 import NlpTests.IO
 import NlpTests.Eval
+import NlpTests.Eval.Dependency
 import NlpTests.EvalLemmas
 import NlpTests.Eval.Evalb
 import NlpTests.Integration

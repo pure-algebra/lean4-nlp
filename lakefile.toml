@@ -39,3 +39,7 @@ root = "Bench.Unary"
 [[lean_exe]]
 name = "compiled-viterbi-benchmark"
 root = "Bench.CompiledViterbi"
+
+[[lean_exe]]
+name = "dependency-benchmark"
+root = "Bench.Dependency"
