@@ -41,7 +41,8 @@ namespace Hmm
     1.0
 
 @[inline] private def negativeLogRatio (numerator denominator : Float) : Cost :=
-  ⟨-(Float.log (numerator / denominator))⟩
+  let result := -(Float.log (numerator / denominator))
+  ⟨if result.toBits == 0x8000000000000000 then 0.0 else result⟩
 
 @[inline] private def countFloat (count : Nat) : Float :=
   Float.ofNat count

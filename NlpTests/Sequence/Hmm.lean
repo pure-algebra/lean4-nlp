@@ -65,6 +65,17 @@ private def knownEmissionIsCheaper : Bool :=
 
 #guard knownEmissionIsCheaper
 
+/-- A one-state estimate exercises exact probability-one start and transition ratios. -/
+private def oneTagEstimate : Nlp.Sequence.Hmm :=
+  Nlp.Sequence.Hmm.estimate #[#[(10, 0), (10, 0)]] 1
+
+/-- Estimation canonicalizes the negative zero returned by `-log(1)` to positive zero. -/
+private def estimatedZerosAreCanonical : Bool :=
+  oneTagEstimate.start.all (fun value ↦ value.toFloat.toBits == 0) &&
+    oneTagEstimate.trans.all (fun value ↦ value.toFloat.toBits == 0)
+
+#guard estimatedZerosAreCanonical
+
 private def chainLayout : Bool :=
   let chain := tiny.toChain #[10, 11]
   chain.len == 2 && chain.nS == 2 &&
