@@ -228,6 +228,7 @@ inductive DependencyGraphError where
   | nonsequentialEmptyNodeId (row anchor expected found : Nat)
   | deps (row : Nat) (cause : DepsError)
   | mixedDepsPresence (presentRow missingRow : Nat)
+  | emptyNodeDepsRequired (row : Nat) (id : NodeId)
   | emptyNodeHeadPresent (row : Nat) (value : String)
   | emptyNodeDeprelPresent (row : Nat) (value : String)
   | graph (cause : GraphError String)
@@ -295,6 +296,11 @@ def ConlluSentence.toDependencyGraph (sentence : ConlluSentence) :
         match row.deprel with
         | .present value _ => throw <| .emptyNodeDeprelPresent sourceRow value
         | .missing => pure ()
+        match row.deps with
+        | .missing => throw <| .emptyNodeDepsRequired sourceRow dependent
+        | .present field _ =>
+          if field.isEmpty || field = "_" then
+            throw <| .emptyNodeDepsRequired sourceRow dependent
       | .range _ _ => pure ()
       match row.deps with
       | .missing =>

@@ -136,6 +136,35 @@ private def preservesEmptyNode : Bool :=
 
 #guard preservesEmptyNode
 
+private def emptyNodeWithoutDeps : String :=
+  "1\tone\tone\tNOUN\tNN\t_\t0\troot\t_\t_\n" ++
+    "1.1\tghost\tghost\tX\t_\t_\t_\t_\t_\t_\n\n"
+
+private def rejectsUnspecifiedEmptyNodeDeps : Bool :=
+  match parseConllu emptyNodeWithoutDeps with
+  | .ok #[sentence] =>
+    match sentence.toDependencyGraph with
+    | .error (.emptyNodeDepsRequired 2 (.empty 1 1)) => true
+    | _ => false
+  | _ => false
+
+#guard rejectsUnspecifiedEmptyNodeDeps
+
+private def rejectsEmptyEmptyNodeDeps : Bool :=
+  match parseConllu withEmptyNode with
+  | .ok #[sentence] =>
+    let emptyRow := sentence.rows[5]!
+    let malformed : ConlluSentence :=
+      { sentence with
+        rows := sentence.rows.set! 5
+          { emptyRow with deps := .present "" (by decide) } }
+    match malformed.toDependencyGraph with
+    | .error (.emptyNodeDepsRequired 6 (.empty 5 1)) => true
+    | _ => false
+  | _ => false
+
+#guard rejectsEmptyEmptyNodeDeps
+
 private def sequentialEmptyNodes : String :=
   "0.1\tzero-one\tzero-one\tX\t_\t_\t_\t_\t1:dep\t_\n" ++
     "0.2\tzero-two\tzero-two\tX\t_\t_\t_\t_\t1:dep\t_\n" ++
