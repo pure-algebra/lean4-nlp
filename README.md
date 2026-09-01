@@ -18,7 +18,8 @@ Lean's standard library and is pinned to Lean 4.33.1.
   compilation;
 - semiring-generic CKY, compiled sparse/dense CKY, one-best extraction, and source-preserving
   Viterbi derivations;
-- linear-chain dynamic programming and a smoothed bigram HMM tagger;
+- linear-chain dynamic programming, a smoothed bigram HMM, and a validated named POS tagger with
+  exact vocabulary lookup, reserved OOV handling, and sentence-boundary resets;
 - source-preserving UTF-8 tokenization with source-byte spans, a persistent streaming cursor, exact
   whitespace mode, configurable English/UD-style rules, and deterministic sentence splitting;
 - POS-aware English lemmatization with exception-first lexical validation, ambiguous candidate
@@ -41,6 +42,7 @@ lake build NlpTests
 lake build parallel-benchmark
 lake build tokenize-benchmark
 lake build morphology-benchmark
+lake build pos-benchmark
 ```
 
 `lake build` builds the public `NlpCore` library. `NlpTests` compiles the full theorem and
@@ -48,20 +50,23 @@ regression suite. Benchmarks are intentionally separate from the library.
 
 ## A checked functional example
 
-This HMM example is mirrored by `NlpTests.Readme`, so CI compiles the API and checks its result.
+This named HMM example is mirrored by `NlpTests.Readme`, so CI compiles the API and checks its
+result.
 
 ```lean
 import Nlp
 
 open Nlp Nlp.Sequence
 
-def training : Array (Array (Tok × Nat)) :=
-  #[#[(10, 0), (11, 1)], #[(10, 0), (11, 1)], #[(10, 0), (10, 0)]]
+def training : Array (Array (String × String)) :=
+  #[#[("dogs", "NOUN"), ("run", "VERB")],
+    #[("cats", "NOUN"), ("sleep", "VERB")],
+    #[("dogs", "NOUN"), ("sleep", "VERB")]]
 
 #eval
-  let model := Hmm.estimate training 2
-  model.decode #[10, 11]
--- #[0, 1]
+  (PosTagger.estimate training).map fun tagger ↦
+    tagger.tagForms #["dogs", "sleep"]
+-- Except.ok #["NOUN", "VERB"]
 ```
 
 Tokenization is also available as a pure value-level API:
@@ -88,9 +93,14 @@ schedule by UTF-8 byte weight. `Config.parallelMinGrain` is measured in items, w
 `*WithMinBytes` APIs set the latter explicitly. English morphology is available functionally via
 `Morphology.Model.analyses`, `generate`, `lemmaOrSelf`, and `annotator`; `NLP.lemmatize` and
 `lemmatizeMany` add checked cancellation-aware application and token-weighted corpus traversal.
-The model deliberately accepts caller-supplied lexical and exception data rather than bundling a
-pretrained dictionary. Lookup is exact and case-sensitive, and document lemmatization requires an
-existing POS layer; a raw-text POS-name adapter and pretrained tagging model remain future work.
+Named POS tagging is available through `PosTagger.compile`, `estimate`, `tagForms`, and `annotator`;
+`NLP.compilePosTagger`, `estimatePosTagger`, `tag`, and `tagMany` add checked effectful model and
+corpus boundaries. Advertised sentence spans decode independently, while token-only documents are
+one HMM sequence. `English.analyzeText` is the pure tokenize/split/POS/lemma path, and
+`NLP.analyzeEnglishText` plus its ordered byte-weighted corpus variants provide the fused effectful
+path with one semantic validation scan per input. Models remain caller-supplied: the repository
+bundles neither a pretrained tagger nor a morphology dictionary, and lookup is exact and
+case-sensitive.
 
 The morphology model exposes ambiguity rather than hiding it, while `lemmaOrSelf` provides the
 conservative single-column policy used by the document annotator:
@@ -135,6 +145,10 @@ Repository-specific implementation work is kept explicit in code and history:
 - lexical buckets and nonzero-cell lists avoid scanning irrelevant productions and chart rows;
 - width-major triangular charts use flat storage with checked layout theorems;
 - Viterbi backpointers preserve source production ordinals and deterministic tie-breaking;
+- named POS model compilation validates dense HMM storage, numeric costs, vocabularies, packed
+  emission identifiers, and a collision-free OOV observation before the decoding hot path;
+- sentence-aware POS annotation resets HMM state at declared boundaries and falls back to a
+  length-preserving whole-document decode only for malformed unchecked segmentation;
 - imperative array kernels are related to functional folds by refinement theorems;
 - tokenizer spans use proof-carrying `String.Pos` endpoints, preserve exact source spelling, and
   avoid converting the whole input to a character list;

@@ -15,6 +15,15 @@ private def decoded : Array Nat :=
 
 example : decoded = #[0, 1] := by native_decide
 
+private def namedTags : Except PosTagger.CompileError (Array String) :=
+  PosTagger.estimate
+      #[#[("dogs", "NOUN"), ("run", "VERB")],
+        #[("cats", "NOUN"), ("sleep", "VERB")],
+        #[("dogs", "NOUN"), ("sleep", "VERB")]] |>.map fun tagger ↦
+    tagger.tagForms #["dogs", "sleep"]
+
+example : namedTags.toOption = some #["NOUN", "VERB"] := by native_decide
+
 private def tokenized : Doc [.sents, .tokens] :=
   Tokenizer.default.process "Hi. Bye!"
 
