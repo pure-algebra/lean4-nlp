@@ -71,7 +71,7 @@ ergonomics—is still incomplete.
 Install [Git](https://git-scm.com/) and [elan](https://github.com/leanprover/elan), then run:
 
 ```bash
-git clone https://github.com/mepuka/lean4-nlp.git
+git clone https://github.com/pure-algebra/lean4-nlp.git
 cd lean4-nlp
 lake build NlpCore
 lake build NlpTests
@@ -85,7 +85,7 @@ To use the library from another Lake TOML project, add:
 ```toml
 [[require]]
 name = "lean4-nlp"
-git = "https://github.com/mepuka/lean4-nlp.git"
+git = "https://github.com/pure-algebra/lean4-nlp.git"
 rev = "main"
 ```
 
