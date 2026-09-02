@@ -23,6 +23,6 @@ jobs:
         with:
           auto-config: false
           build: true
-          build-args: NlpCore NlpTests parallel-benchmark
+          build-args: NlpCore NlpTests parallel-benchmark stable-buckets-benchmark
           test: false
           nanoda: false

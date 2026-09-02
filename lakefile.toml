@@ -79,3 +79,7 @@ root = "Bench.GraphQuery"
 [[lean_exe]]
 name = "tokenregex-benchmark"
 root = "Bench.TokenRegex"
+
+[[lean_exe]]
+name = "stable-buckets-benchmark"
+root = "Bench.StableBuckets"
