@@ -1,4 +1,5 @@
 import Nlp.Core.Data.Span
+import Nlp.Core.Data.StableBuckets
 import Nlp.Core.Data.Temporal
 import Nlp.Core.Data.ChartLayout
 import Nlp.Core.Data.Dependency
