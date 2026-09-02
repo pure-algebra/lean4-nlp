@@ -28,6 +28,10 @@ private def regularPatternCompileErrorDetail : CompileError → String
       s!"regular automata state count {count} exceeds the UInt32 identifier capacity"
   | .edgeBudget required limit =>
       s!"regular automata need {required} edges but the model limit is {limit}"
+  | .transitionOffsetCapacity states =>
+      s!"regular transition offsets for {states} states exceed runtime capacity"
+  | .transitionPackingInvariant =>
+      "regular transition packing violated an internal invariant"
 
 /-- Stable rendering for bounded exact-phrase compilation failures. -/
 private def phraseCompileErrorDetail : PhraseCompileError → String

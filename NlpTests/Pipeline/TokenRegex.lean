@@ -4,6 +4,15 @@ namespace NlpTests.Pipeline.TokenRegex
 
 open Nlp Nlp.Pattern
 
+/- New transition-layout failures retain stable effect-boundary diagnostics. -/
+#guard Nlp.NLP.tokenRegexCompileErrorDetail
+    (.automaton (.transitionOffsetCapacity 17)) ==
+  "automaton transition offsets for 17 states exceed runtime capacity"
+
+#guard Nlp.NLP.tokenRegexCompileErrorDetail
+    (.automaton .transitionPackingInvariant) ==
+  "automaton transition packing violated an internal invariant"
+
 private def sampleDoc (verb : String) : Doc [.tokens, .pos, .lemma, .ner] :=
   { text := s!"Ada {verb}"
     forms := #["Ada", verb]

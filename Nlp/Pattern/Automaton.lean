@@ -1,3 +1,4 @@
+import Nlp.Core.Data.StableBuckets
 import Nlp.Pattern.Regular
 
 /-!
@@ -41,6 +42,10 @@ inductive CompileError where
   | stateCapacity (count : Nat)
   /-- Thompson construction exceeded the configured combined edge budget. -/
   | edgeBudget (required limit : Nat)
+  /-- The terminal transition offset cannot fit the runtime array-size representation. -/
+  | transitionOffsetCapacity (states : Nat)
+  /-- Validated Thompson edges and their sealed packed layout disagreed internally. -/
+  | transitionPackingInvariant
   deriving Repr, DecidableEq, Inhabited
 
 /-- One private epsilon edge during Thompson construction. -/
@@ -136,39 +141,39 @@ private def compileRegular (config : CompileConfig) (builder : Builder Atom) :
       let builder ← builder.addEpsilon config fragment.stop fragment.start
       return (builder, ⟨start, stop⟩)
 
+/-- Keep shared packing failures behind the automaton compiler's domain error vocabulary. -/
+@[inline] private def packingError : StableBuckets.Error → CompileError
+  | .offsetCapacity buckets => .transitionOffsetCapacity buckets
+  | _ => .transitionPackingInvariant
+
 /-- Build compressed epsilon-edge offsets and targets in deterministic insertion order. -/
 private def buildEpsilonCsr (stateCount : Nat) (edges : Array EpsilonEdge) :
-    Array Nat × Array UInt32 := Id.run do
-  let mut buckets : Array (Array UInt32) := Array.replicate stateCount #[]
-  for edge in edges do
-    let source := edge.source.toNat
-    buckets := buckets.set! source ((buckets.getD source #[]).push edge.target)
-  let mut offsets := Array.emptyWithCapacity (stateCount + 1)
-  let mut targets := Array.emptyWithCapacity edges.size
-  for bucket in buckets do
-    offsets := offsets.push targets.size
-    for target in bucket do
-      targets := targets.push target
-  offsets := offsets.push targets.size
-  return (offsets, targets)
+    Except CompileError (Array Nat × Array UInt32) := do
+  let limits : StableBuckets.Limits :=
+    { maxBuckets := stateCount, maxEntries := edges.size }
+  let layout ←
+    (StableBuckets.build limits stateCount edges fun edge ↦ edge.source.toNat).mapError
+      packingError
+  let targets ← (layout.gatherMap edges fun edge ↦ edge.target).mapError packingError
+  return (layout.offsets, targets)
 
 /-- Build parallel compressed symbolic-edge tables in deterministic insertion order. -/
 private def buildAtomCsr (stateCount : Nat) (edges : Array (AtomEdge Atom)) :
-    Array Nat × Array UInt32 × Array Atom := Id.run do
-  let mut buckets : Array (Array (Atom × UInt32)) := Array.replicate stateCount #[]
-  for edge in edges do
-    let source := edge.source.toNat
-    buckets := buckets.set! source ((buckets.getD source #[]).push (edge.atom, edge.target))
-  let mut offsets := Array.emptyWithCapacity (stateCount + 1)
+    Except CompileError (Array Nat × Array UInt32 × Array Atom) := do
+  let limits : StableBuckets.Limits :=
+    { maxBuckets := stateCount, maxEntries := edges.size }
+  let layout ←
+    (StableBuckets.build limits stateCount edges fun edge ↦ edge.source.toNat).mapError
+      packingError
   let mut targets := Array.emptyWithCapacity edges.size
   let mut atoms := Array.emptyWithCapacity edges.size
-  for bucket in buckets do
-    offsets := offsets.push targets.size
-    for (atom, target) in bucket do
-      atoms := atoms.push atom
-      targets := targets.push target
-  offsets := offsets.push targets.size
-  return (offsets, targets, atoms)
+  for source in layout.sourceOrder do
+    match edges[source]? with
+    | some edge =>
+        targets := targets.push edge.target
+        atoms := atoms.push edge.atom
+    | none => throw .transitionPackingInvariant
+  return (layout.offsets, targets, atoms)
 
 /-- A constructor-protected bounded Thompson NFA for ordered source rules. -/
 structure Automaton (Atom : Type u) where
@@ -225,9 +230,10 @@ def compileWith (config : CompileConfig) (patterns : Array (Regular Atom)) :
     acceptStates := acceptStates.push fragment.stop
     if pattern.nullable then
       nullableRules := nullableRules.push rule
-  let (epsilonOffsets, epsilonTargets) :=
+  let (epsilonOffsets, epsilonTargets) ←
     buildEpsilonCsr builder.nextState builder.epsilonEdges
-  let (atomOffsets, atomTargets, atoms) := buildAtomCsr builder.nextState builder.atomEdges
+  let (atomOffsets, atomTargets, atoms) ←
+    buildAtomCsr builder.nextState builder.atomEdges
   return .mk builder.nextState startState epsilonOffsets epsilonTargets atomOffsets atomTargets
     atoms acceptStates nullableRules
 

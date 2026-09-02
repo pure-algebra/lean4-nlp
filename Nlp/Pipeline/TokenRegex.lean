@@ -67,6 +67,10 @@ private def tokenRegexAutomatonErrorDetail : Pattern.CompileError → String
   | .stateCapacity count => s!"state count {count} exceeds compact identifier capacity"
   | .edgeBudget required limit =>
       s!"automaton needs {required} edges but the limit is {limit}"
+  | .transitionOffsetCapacity states =>
+      s!"automaton transition offsets for {states} states exceed runtime capacity"
+  | .transitionPackingInvariant =>
+      "automaton transition packing violated an internal invariant"
 
 /-- Stable description of one checked textual compilation failure. -/
 def tokenRegexCompileErrorDetail : TokenRegex.CompileError → String

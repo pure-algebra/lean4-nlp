@@ -11,6 +11,15 @@ namespace NlpTests.Pipeline.RegexNer
 
 open Nlp Nlp.Pattern
 
+/- New transition-layout failures retain stable effect-boundary diagnostics. -/
+#guard Nlp.NLP.regexNerCompileErrorDetail
+    (.regular (.transitionOffsetCapacity 17)) ==
+  "regular transition offsets for 17 states exceed runtime capacity"
+
+#guard Nlp.NLP.regexNerCompileErrorDetail
+    (.regular .transitionPackingInvariant) ==
+  "regular transition packing violated an internal invariant"
+
 /-- Mixed regular and exact-phrase fixture rules. -/
 private def rules : Array RegexNerRule :=
   #[{ pattern := .regular (.atom (.form (.equal "Alice")))
